@@ -11,3 +11,4 @@ numpy
 ollama
 loguru
 pytest
+rich
