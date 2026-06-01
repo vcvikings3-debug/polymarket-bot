@@ -1,0 +1,1 @@
+"""Flask web app serving the live P&L dashboard for both wallets."""

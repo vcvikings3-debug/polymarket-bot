@@ -1,0 +1,1 @@
+"""Analyzes crypto news and scores relevance to active Polymarket markets."""

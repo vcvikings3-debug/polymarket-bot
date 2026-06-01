@@ -1,0 +1,1 @@
+"""Handles all Polymarket API calls including fetching markets and placing bets."""

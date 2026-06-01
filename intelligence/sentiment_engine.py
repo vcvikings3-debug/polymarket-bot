@@ -1,0 +1,1 @@
+"""Measures gap between crowd sentiment and actual event likelihood."""

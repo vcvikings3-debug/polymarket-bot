@@ -1,0 +1,1 @@
+"""Manages wallet connection and USDC balance checking on Polygon."""

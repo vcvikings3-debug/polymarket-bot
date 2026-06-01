@@ -1,0 +1,1 @@
+"""SQLite database handler for logging all bets, outcomes, and performance metrics."""

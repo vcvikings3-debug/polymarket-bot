@@ -1,0 +1,13 @@
+requests
+python-dotenv
+flask
+sqlalchemy
+schedule
+websocket-client
+py-clob-client
+web3
+pandas
+numpy
+ollama
+loguru
+pytest

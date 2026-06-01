@@ -1,0 +1,1 @@
+"""Decides whether to place a bet based on confidence score and Kelly criterion sizing."""
