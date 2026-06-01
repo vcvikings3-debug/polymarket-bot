@@ -1,180 +1,120 @@
-"""Main orchestrator that runs the full bot pipeline on a schedule."""
+"""One-shot market fetch + LLM analysis — pulls active markets, filters for crypto, scores with local LLM, prints results."""
 
 import sys
 import os
-import time
-from datetime import datetime
-from loguru import logger
+import json
+import requests
+from datetime import datetime, timezone
 
-# Ensure project root is on sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from data.database import initialize_db, save_market, get_market_count, get_crypto_market_count, get_crypto_markets_only, save_llm_analysis
+from execution.polymarket_client import _matches_crypto, parse_market
+from intelligence.market_scorer import analyze_market_with_llm
 
-from data.database import initialize_db, save_market, get_market_count, get_crypto_market_count
-from execution.polymarket_client import fetch_crypto_markets, parse_market, GAMMA_API_BASE
-from intelligence.market_scorer import score_market, get_top_markets
-from dashboard.terminal_display import run_dashboard, build_table, build_header
+GAMMA_API = "https://gamma-api.polymarket.com"
 
-# Configure logging
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "pipeline.log")
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-logger.remove()  # Remove default handler
-logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{message}</cyan>")
-logger.add(LOG_PATH, level="DEBUG", rotation="10 MB", format="{time} | {level:<8} | {message}")
-
-
-def show_startup_banner():
-    """Print the startup banner."""
-    banner = f"""
-╔══════════════════════════════════════════════════════════╗
-║              POLYMARKET BOT — MARKET SCANNER              ║
-╠══════════════════════════════════════════════════════════╣
-║  Collaborators:  Cameron + coos                          ║
-║  Model:          Qwen2.5 14B Instruct via LM Studio      ║
-║  Phase:          Phase 1 — Market Scanner                ║
-║  API:            {GAMMA_API_BASE:<43}║
-╚══════════════════════════════════════════════════════════╝
-"""
-    print(banner)
-    logger.info("Startup complete — Phase 1 Market Scanner initialized")
-
-
-def run_fetch_pipeline() -> str:
-    """Run one full fetch pipeline: fetch, parse, save, score. Returns timestamp string."""
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    logger.info("=== Starting market fetch pipeline ===")
-
-    try:
-        # Fetch
-        raw_crypto = fetch_crypto_markets()
-        logger.info("Fetched {} raw crypto markets", len(raw_crypto))
-
-        # Parse and save
-        saved_count = 0
-        for raw in raw_crypto:
-            parsed = parse_market(raw)
-            if save_market(parsed):
-                saved_count += 1
-
-        # Log results
-        total = get_market_count()
-        crypto = get_crypto_market_count()
-        logger.info("Pipeline complete: {} total markets, {} crypto, {} saved this run",
-                     total, crypto, saved_count)
-
-        # Log top 3 markets
-        top = get_top_markets(3)
-        if top:
-            logger.info("Top 3 markets by score:")
-            for i, m in enumerate(top, 1):
-                logger.info("  {}. {} — YES={:.2f} Score={:.4f} Vol=${:,.0f}",
-                           i, m.get("question", "?")[:60],
-                           float(m.get("yes_price", 0)),
-                           float(m.get("score", 0)),
-                           float(m.get("volume", 0)))
-
-    except Exception as e:
-        logger.error("Pipeline fetch error: {}", e)
-        import traceback
-        logger.error(traceback.format_exc())
-
-    return now_str
-
-
-def run_test_fetch():
-    """Run a one-time test fetch to confirm the pipeline works before starting the loop."""
-    print("\n" + "=" * 60)
-    print("  TEST FETCH — Verifying Gamma API connection...")
-    print("=" * 60 + "\n")
-
-    from execution.polymarket_client import fetch_all_markets
-
-    all_raw = fetch_all_markets()
-    print(f"  Total active markets returned: {len(all_raw)}")
-
-    # Count crypto
-    from execution.polymarket_client import _matches_crypto
-    crypto_raw = [m for m in all_raw if _matches_crypto(m)]
-    print(f"  Crypto-flagged markets: {len(crypto_raw)}")
-
-    # Parse and save a sample
-    print(f"\n  Saving {len(crypto_raw)} crypto markets to database...\n")
-    for raw in crypto_raw:
-        parsed = parse_market(raw)
-        save_market(parsed)
-
-    # Score and show top 5
-    top = get_top_markets(5)
-    print("  TOP 5 CRYPTO MARKETS BY SCORE:")
-    print(f"  {'#':<3} {'Market':<50} {'YES':<8} {'NO':<8} {'Volume':<12} {'Score':<8}")
-    print("  " + "-" * 92)
-    for i, m in enumerate(top, 1):
-        print(f"  {i:<3} {m.get('question', '?')[:48]:<50} "
-              f"{float(m.get('yes_price',0)):<8.2f} {float(m.get('no_price',0)):<8.2f} "
-              f"${float(m.get('volume',0)):<9,.0f} {float(m.get('score',0)):<8.4f}")
-
-    print("\n" + "=" * 60)
-    print("  TEST FETCH COMPLETE — Pipeline is operational")
-    print("=" * 60 + "\n")
-    return len(all_raw), len(crypto_raw)
 
 
 def main():
-    """Main entry point — orchestrates the full pipeline."""
-    # Show banner
-    show_startup_banner()
+    print("=" * 70)
+    print("  POLYMARKET BOT — Phase 1 + Phase 2 Pipeline")
+    print("  Fetch → Filter → Save → LLM Analyze → Results")
+    print("=" * 70)
 
-    # Initialize database
+    # Init DB
     initialize_db()
 
-    # Run test fetch first
-    total_markets, crypto_markets = run_test_fetch()
-
-    # If test fetch returned 0, try a raw debug request
-    if total_markets == 0:
-        print("\n  ⚠️  Test fetch returned 0 markets. Running debug check...\n")
-        import requests
-        try:
-            debug_url = f"{GAMMA_API_BASE}/markets?active=true&limit=10"
-            resp = requests.get(debug_url, timeout=15)
-            print(f"  Debug URL: {debug_url}")
-            print(f"  Status code: {resp.status_code}")
-            print(f"  Response text (first 500 chars): {resp.text[:500]}")
-            if resp.status_code == 200:
-                data = resp.json()
-                print(f"  Markets in response: {len(data)}")
-        except Exception as e:
-            print(f"  Debug request failed: {e}")
-
-        print("\n  Attempting to re-run fetch after debug...\n")
-        total_markets, crypto_markets = run_test_fetch()
-
-    if total_markets == 0:
-        print("\n  ❌ Pipeline still returning 0 markets after debug. Check API connectivity.")
-        print("     Verify you have internet access and the Gamma API is reachable.")
+    # ── Phase 1: Fetch one page of 100 active markets ──
+    print("\n  [Phase 1] Fetching https://gamma-api.polymarket.com/markets?active=true&limit=100 ...")
+    try:
+        resp = requests.get(f"{GAMMA_API}/markets", params={"active": "true", "limit": 100}, timeout=15)
+        resp.raise_for_status()
+        markets = resp.json()
+    except Exception as e:
+        print(f"  ❌ Fetch failed: {e}")
         sys.exit(1)
 
-    # Start main loop — run fetch every 5 minutes, dashboard handles display refresh separately
-    print("  🟢 Pipeline verified. Starting live dashboard with 5-minute fetch loop...\n")
-    time.sleep(2)
+    print(f"  ✅ Received {len(markets)} active markets")
 
-    last_fetch = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    fetch_interval = 300  # 5 minutes
+    # Filter crypto with strict keywords + blocklist
+    crypto_raw = [m for m in markets if _matches_crypto(m)]
+    print(f"  🔑 Crypto-flagged (strict filter): {len(crypto_raw)}")
 
-    import threading
-    import time as time_module
+    # Save to DB
+    saved = 0
+    for raw in crypto_raw:
+        parsed = parse_market(raw)
+        if save_market(parsed):
+            saved += 1
 
-    def fetch_loop():
-        nonlocal last_fetch
-        while True:
-            time_module.sleep(fetch_interval)
-            last_fetch = run_fetch_pipeline()
+    print(f"  💾 Saved {saved} crypto markets to data/polymarket.db")
 
-    # Start fetch loop in background thread
-    fetch_thread = threading.Thread(target=fetch_loop, daemon=True)
-    fetch_thread.start()
+    total_db = get_market_count()
+    crypto_db = get_crypto_market_count()
+    print(f"  📊 Database: {total_db} total, {crypto_db} crypto")
 
-    # Run dashboard in main thread
-    run_dashboard(last_fetch)
+    # ── Phase 2: LLM Analysis ──
+    print(f"\n  [Phase 2] Analyzing {crypto_db} crypto markets with Qwen2.5 14B via LM Studio...")
+    print(f"  URL: http://127.0.0.1:1234/api/v1/chat/completions")
+    print(f"  Model: qwen2.5-14b-instruct\n")
+
+    crypto_markets = get_crypto_markets_only()
+
+    if not crypto_markets:
+        print("  ⚠️  No crypto markets found in database to analyze.")
+        print("\n" + "=" * 70)
+        print("  Done.")
+        print("=" * 70)
+        return
+
+    results = []
+    for i, m in enumerate(crypto_markets, 1):
+        question = m.get("question", "Unknown")
+        print(f"  [{i}/{len(crypto_markets)}] Analyzing: {question[:60]}...")
+        analysis = analyze_market_with_llm(m)
+        save_llm_analysis(
+            m["id"],
+            analysis["signal"],
+            analysis["confidence"],
+            analysis["reasoning"],
+            analysis["edge"],
+        )
+        results.append((question, analysis))
+        print(f"         → Signal: {analysis['signal']}  Confidence: {analysis['confidence']:.2f}  Edge: {analysis['edge']:.4f}")
+
+    # ── Print Results Table ──
+    print(f"\n  {'=' * 70}")
+    print(f"  {'LLM ANALYSIS RESULTS':^70}")
+    print(f"  {'=' * 70}")
+    print(f"  {'#':<3} {'Market':<60} {'Signal':<10} {'Conf':<6} {'Edge':<8} {'Reasoning'}")
+    print(f"  {'─' * 3} {'─' * 60} {'─' * 10} {'─' * 6} {'─' * 8} {'─' * 30}")
+
+    for i, (question, analysis) in enumerate(results, 1):
+        q = question[:58]
+        signal = analysis["signal"]
+        conf = f"{analysis['confidence']:.2f}"
+        edge = f"{analysis['edge']:.4f}"
+        reasoning = analysis["reasoning"][:28]
+
+        # Color signal
+        if signal == "BET_YES":
+            signal_display = f"\033[92m{signal}\033[0m"  # green
+        elif signal == "BET_NO":
+            signal_display = f"\033[91m{signal}\033[0m"  # red
+        else:
+            signal_display = f"\033[93m{signal}\033[0m"  # yellow
+
+        print(f"  {i:<3} {q:<60} {signal_display:<10} {conf:<6} {edge:<8} {reasoning}")
+
+    print(f"  {'─' * 3} {'─' * 60} {'─' * 10} {'─' * 6} {'─' * 8} {'─' * 30}")
+    print(f"\n  ✅ Phase 2 complete — {len(results)} markets analyzed by LLM")
+    print(f"  📝 Full LLM call log: logs/llm_calls.log")
+    print(f"  📝 Pipeline log: logs/pipeline.log")
+    print("\n" + "=" * 70)
+    print("  Done. Exiting cleanly.")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

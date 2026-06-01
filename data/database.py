@@ -12,7 +12,27 @@ def _get_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
+
+
+def _ensure_columns(conn):
+    """Add any missing columns to the markets table."""
+    cursor = conn.execute("PRAGMA table_info(markets)")
+    existing = {row["name"] for row in cursor.fetchall()}
+    migrations = {
+        "is_crypto": "INTEGER DEFAULT 0",
+        "llm_signal": "TEXT",
+        "llm_confidence": "REAL",
+        "llm_reasoning": "TEXT",
+        "llm_edge": "REAL",
+        "llm_analyzed_at": "TEXT",
+    }
+    for col, coltype in migrations.items():
+        if col not in existing:
+            logger.info("Adding missing column '{}' to markets table", col)
+            conn.execute(f"ALTER TABLE markets ADD COLUMN {col} {coltype}")
+    conn.commit()
 
 
 def initialize_db():
@@ -32,7 +52,12 @@ def initialize_db():
             liquidity REAL,
             is_crypto INTEGER DEFAULT 0,
             last_updated TEXT,
-            raw_json TEXT
+            raw_json TEXT,
+            llm_signal TEXT,
+            llm_confidence REAL,
+            llm_reasoning TEXT,
+            llm_edge REAL,
+            llm_analyzed_at TEXT
         )
     """)
 
@@ -49,6 +74,7 @@ def initialize_db():
     """)
 
     conn.commit()
+    _ensure_columns(conn)
     conn.close()
     logger.info("Database initialized at {}", DB_PATH)
 
@@ -104,6 +130,11 @@ def get_all_crypto_markets() -> list:
     return [dict(row) for row in rows]
 
 
+def get_crypto_markets_only() -> list:
+    """Return only markets where is_crypto=1 (strictly flagged)."""
+    return get_all_crypto_markets()
+
+
 def get_market_by_id(market_id: str) -> dict | None:
     """Return a single market by its Polymarket ID."""
     conn = _get_connection()
@@ -132,3 +163,27 @@ def get_crypto_market_count() -> int:
     count = cursor.fetchone()[0]
     conn.close()
     return count
+
+
+def save_llm_analysis(market_id: str, signal: str, confidence: float, reasoning: str, edge: float) -> bool:
+    """Update a market record with LLM analysis results. Returns True on success."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        cursor = conn.cursor()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor.execute("""
+            UPDATE markets SET
+                llm_signal = ?,
+                llm_confidence = ?,
+                llm_reasoning = ?,
+                llm_edge = ?,
+                llm_analyzed_at = ?
+            WHERE id = ?
+        """, (signal, confidence, reasoning, edge, now, market_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to save LLM analysis for {}: {}", market_id, e)
+        return False

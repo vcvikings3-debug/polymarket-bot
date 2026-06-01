@@ -7,12 +7,48 @@ from datetime import datetime, timezone
 from loguru import logger
 
 GAMMA_API_BASE = "https://gamma-api.polymarket.com"
+
+# Strict crypto keywords — must match exactly in the question or category
 CRYPTO_KEYWORDS = [
-    "bitcoin", "btc", "ethereum", "eth", "crypto", "solana", "sol",
-    "coinbase", "binance", "altcoin", "defi", "blockchain", "token",
-    "web3", "price", "rally", "ath", "bull", "bear", "pump", "dump",
-    "halving", "stablecoin", "usdc", "usdt",
+    "bitcoin", "btc", "ethereum", "eth", "solana", "sol", "crypto", "defi",
+    "blockchain", "altcoin", "nft", "web3", "usdc", "usdt", "stablecoin",
+    "binance", "coinbase", "halving", "memecoin", "airdrop",
+    "token price", "market cap",
 ]
+
+# Blocklist — if any of these appear in the question, reject regardless
+BLOCKLIST = [
+    "football", "soccer", "fifa", "election", "president", "sports",
+    "nfl", "nba", "movie", "music", "album", "tv show", "oscar",
+]
+
+
+def _matches_crypto(market: dict) -> bool:
+    """Strict crypto check — market must match a crypto keyword AND pass blocklist."""
+    question = (market.get("question") or "").lower()
+    category = (market.get("category") or "").lower()
+
+    # Check blocklist first — if question is blocked, reject immediately
+    for blocked_word in BLOCKLIST:
+        if blocked_word in question:
+            return False
+
+    # Combine question + category for keyword matching
+    text_to_check = question + " " + category
+
+    # Also check tags
+    tags = market.get("tags", [])
+    if isinstance(tags, list):
+        for tag in tags:
+            if isinstance(tag, str):
+                text_to_check += " " + tag.lower()
+
+    # Check for any crypto keyword
+    for keyword in CRYPTO_KEYWORDS:
+        if keyword in text_to_check:
+            return True
+
+    return False
 
 
 def fetch_all_markets() -> list:
@@ -62,36 +98,6 @@ def fetch_all_markets() -> list:
 
     logger.info("Fetched {} total markets from Gamma API", len(all_markets))
     return all_markets
-
-
-def _matches_crypto(market: dict) -> bool:
-    """Check if a market is crypto-related based on tags, category, or question text."""
-    text_fields = []
-
-    # Check question
-    if market.get("question"):
-        text_fields.append(market["question"].lower())
-    # Check tags
-    tags = market.get("tags", [])
-    if isinstance(tags, list):
-        for tag in tags:
-            if isinstance(tag, str):
-                text_fields.append(tag.lower())
-    # Check category
-    category = market.get("category", "")
-    if isinstance(category, str):
-        text_fields.append(category.lower())
-
-    # Check outcomes text too
-    outcomes = market.get("outcomes", "")
-    if isinstance(outcomes, str):
-        text_fields.append(outcomes.lower())
-
-    combined = " ".join(text_fields)
-    for keyword in CRYPTO_KEYWORDS:
-        if keyword in combined:
-            return True
-    return False
 
 
 def fetch_crypto_markets() -> list:

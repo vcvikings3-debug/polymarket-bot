@@ -1,75 +1,167 @@
-"""Scores Polymarket markets by identifying mispriced odds vs real probability."""
+"""Scores Polymarket markets by identifying mispriced odds vs real probability using local LLM analysis."""
 
+import json
+import requests
 from datetime import datetime, timezone
 from loguru import logger
-from data.database import get_all_crypto_markets
+
+# LM Studio endpoint (OpenAI-compatible)
+LM_STUDIO_URL = "http://127.0.0.1:1234/v1/chat/completions"
+LM_MODEL = "qwen2.5-14b-instruct"
+LLM_LOG_PATH = "logs/llm_calls.log"
+
+# Configure LLM logger
+import sys
+import os
+os.makedirs(os.path.dirname(LLM_LOG_PATH), exist_ok=True)
+llm_logger = logger.bind(name="llm")
+llm_logger.add(LLM_LOG_PATH, rotation="10 MB", format="{time} | {message}")
 
 
-def score_market(market: dict) -> float:
-    """Score a market from 0.0 to 1.0 based on volume, liquidity, odds interest, and recency.
+def _days_until(end_date_str: str) -> int:
+    """Calculate days until end date."""
+    if not end_date_str:
+        return 0
+    try:
+        end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        days = (end_date - now).days
+        return max(days, 0)
+    except (ValueError, TypeError):
+        return 0
 
-    Weightings:
-        Volume:      30%
-        Liquidity:   25%
-        Odds:        30%
-        Recency:     15%
+
+SYSTEM_PROMPT = (
+    "You are a prediction market analyst specializing in crypto markets on Polymarket. "
+    "Your job is to identify markets where the current odds are mispriced relative to the "
+    "true probability of the outcome. You are analytical, data-driven, and concise. "
+    "Never recommend betting more than the user can afford to lose."
+)
+
+
+def analyze_market_with_llm(market: dict) -> dict:
+    """Send a market to LM Studio and return the LLM's analysis.
+
+    Returns dict with keys: signal, confidence, reasoning, edge
     """
-    # --- Volume score (30% weight) ---
-    # Normalize against $10,000 baseline; cap at 1.0
-    volume = float(market.get("volume", 0) or 0)
-    volume_score = min(volume / 10000.0, 1.0)
+    question = market.get("question", "Unknown")
+    yes_price = float(market.get("yes_price", 0.5))
+    no_price = float(market.get("no_price", 0.5))
+    liquidity = float(market.get("liquidity", 0))
+    days_left = _days_until(market.get("end_date", ""))
+    yes_pct = round(yes_price * 100, 1)
+    no_pct = round(no_price * 100, 1)
 
-    # --- Liquidity score (25% weight) ---
-    # Normalize against $5,000 baseline; cap at 1.0
-    liquidity = float(market.get("liquidity", 0) or 0)
-    liquidity_score = min(liquidity / 5000.0, 1.0)
-
-    # --- Odds interest score (30% weight) ---
-    # Markets where yes_price is between 0.15 and 0.85 are more interesting
-    yes_price = float(market.get("yes_price", 0.5) or 0.5)
-    # Distance from extremes (0.0 or 1.0) — peak interest at 0.5
-    odds_interest = 1.0 - abs(yes_price - 0.5) * 2.0  # 0.0 at edges, 1.0 at center
-    # But also prefer prices between 0.15-0.85
-    if yes_price < 0.15 or yes_price > 0.85:
-        odds_interest *= 0.5  # penalize near-certain outcomes
-    odds_score = odds_interest
-
-    # --- Recency score (15% weight) ---
-    # Markets closing sooner score higher
-    end_date_str = market.get("end_date", "")
-    recency_score = 0.5  # default mid value
-    if end_date_str:
-        try:
-            # Try parsing ISO format
-            end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
-            days_remaining = (end_date - now).days
-            if days_remaining <= 0:
-                recency_score = 1.0  # closing today or already passed
-            elif days_remaining >= 180:
-                recency_score = 0.0  # 6+ months out
-            else:
-                recency_score = 1.0 - (days_remaining / 180.0)
-        except (ValueError, TypeError):
-            recency_score = 0.5
-
-    # --- Weighted combination ---
-    final_score = (
-        volume_score * 0.30 +
-        liquidity_score * 0.25 +
-        odds_score * 0.30 +
-        recency_score * 0.15
+    user_prompt = (
+        f"Analyze this Polymarket prediction market and give me a betting signal.\n\n"
+        f"Market: {question}\n"
+        f"Current YES price: {yes_price} (implies {yes_pct}% probability)\n"
+        f"Current NO price: {no_price} (implies {no_pct}% probability)\n"
+        f"Liquidity: ${liquidity:,.2f}\n"
+        f"Days until resolution: {days_left}\n\n"
+        f"Based on your knowledge of crypto markets and current conditions, is this market mispriced?\n"
+        f"Respond with ONLY valid JSON using double quotes, no other text:\n"
+        f"{{\n"
+        f'  "signal": "BET_YES" or "BET_NO" or "SKIP",\n'
+        f'  "confidence": 0.0 to 1.0,\n'
+        f'  "reasoning": "one sentence max",\n'
+        f'  "edge": "estimated edge as decimal e.g. 0.08 means 8% edge"\n'
+        f"}}"
     )
 
-    return round(min(max(final_score, 0.0), 1.0), 4)
+    payload = {
+        "model": LM_MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 256,
+    }
 
+    logger.info("LLM analyzing market: {} (YES={}, NO={})", question[:50], yes_price, no_price)
+    llm_logger.info("REQUEST market={} yes_price={} no_price={}", question[:50], yes_price, no_price)
 
-def get_top_markets(n: int = 20) -> list:
-    """Return the top N crypto markets by score from the database."""
-    markets = get_all_crypto_markets()
-    scored = []
-    for m in markets:
-        m["score"] = score_market(m)
-        scored.append(m)
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored[:n]
+    try:
+        resp = requests.post(LM_STUDIO_URL, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Extract response text
+        content = data["choices"][0]["message"]["content"].strip()
+        llm_logger.info("RESPONSE market={} raw={}", question[:50], content)
+
+        # Parse JSON from the response
+        # Try to find JSON block in the response
+        parsed = None
+        try:
+            # Extract JSON block from the content
+            cleaned = content.strip()
+            if cleaned.startswith("```"):
+                lines = cleaned.split("\n")
+                cleaned = "\n".join(line for line in lines if not line.startswith("```"))
+
+            # Find the JSON object boundaries
+            start = cleaned.find("{")
+            end = cleaned.rfind("}") + 1
+            if start >= 0 and end > start:
+                json_str = cleaned[start:end]
+                # Try json.loads (works with double-quoted JSON)
+                try:
+                    parsed = json.loads(json_str)
+                except json.JSONDecodeError:
+                    # Fallback: replace single quotes with double quotes for Python-style dicts
+                    try:
+                        import ast
+                        parsed = ast.literal_eval(json_str)
+                    except (ValueError, SyntaxError):
+                        pass
+        except Exception:
+            pass
+
+        if parsed and isinstance(parsed, dict):
+            signal = parsed.get("signal", "SKIP")
+            confidence = float(parsed.get("confidence", 0))
+            reasoning = str(parsed.get("reasoning", ""))[:200]
+            edge_raw = parsed.get("edge", 0)
+            # Parse edge — could be a string like "0.08" or a number
+            if isinstance(edge_raw, str):
+                try:
+                    edge = float(edge_raw.replace("%", "")) / 100.0
+                except (ValueError, TypeError):
+                    edge = 0.0
+            else:
+                edge = float(edge_raw) if edge_raw else 0.0
+
+            # Validate signal
+            if signal not in ("BET_YES", "BET_NO", "SKIP"):
+                signal = "SKIP"
+
+            result = {
+                "signal": signal,
+                "confidence": min(max(confidence, 0.0), 1.0),
+                "reasoning": reasoning,
+                "edge": edge,
+            }
+            logger.info("LLM result: {} confidence={:.2f} reasoning={}", signal, confidence, reasoning)
+            llm_logger.info("RESULT market={} signal={} conf={} edge={} reasoning={}",
+                          question[:50], signal, confidence, edge, reasoning)
+            return result
+
+        logger.warning("LLM returned unparseable JSON for market: {}", question[:50])
+        llm_logger.warning("PARSE_FAIL market={} raw_response={}", question[:50], content[:300])
+
+    except requests.exceptions.ConnectionError as e:
+        logger.error("LLM connection error — LM Studio unreachable at {}: {}", LM_STUDIO_URL, e)
+        llm_logger.error("CONNECTION_ERROR url={} error={}", LM_STUDIO_URL, e)
+    except requests.exceptions.Timeout:
+        logger.warning("LLM timeout after 30s for market: {}", question[:50])
+        llm_logger.warning("TIMEOUT market={}", question[:50])
+    except requests.exceptions.RequestException as e:
+        logger.error("LLM request error: {}", e)
+        llm_logger.error("REQUEST_ERROR market={} error={}", question[:50], e)
+    except Exception as e:
+        logger.error("Unexpected LLM error for market {}: {}", question[:50], e)
+        llm_logger.error("UNEXPECTED_ERROR market={} error={}", question[:50], e)
+
+    return {"signal": "SKIP", "confidence": 0.0, "reasoning": "LLM unavailable", "edge": 0.0}
