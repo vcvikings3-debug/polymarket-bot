@@ -51,13 +51,19 @@ def _matches_crypto(market: dict) -> bool:
     return False
 
 
-def fetch_all_markets() -> list:
-    """Fetch all active markets from Polymarket Gamma API with pagination."""
+def fetch_all_markets(max_markets: int = 500) -> list:
+    """Fetch active markets from Polymarket Gamma API with pagination.
+
+    max_markets caps total records retrieved (default 500 = 5 pages).
+    Pass 0 for unlimited.
+    """
     all_markets = []
     offset = 0
     limit = 100
 
     while True:
+        if max_markets and len(all_markets) >= max_markets:
+            break
         try:
             url = f"{GAMMA_API_BASE}/markets"
             params = {

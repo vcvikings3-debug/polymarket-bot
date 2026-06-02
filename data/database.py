@@ -73,6 +73,20 @@ def initialize_db():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            market_id TEXT,
+            side TEXT,
+            size REAL,
+            outcome TEXT DEFAULT 'PENDING',
+            pnl REAL DEFAULT 0,
+            placed_at TEXT,
+            resolved_at TEXT,
+            FOREIGN KEY (market_id) REFERENCES markets(id)
+        )
+    """)
+
     conn.commit()
     _ensure_columns(conn)
     conn.close()
@@ -117,6 +131,24 @@ def save_market(market: dict) -> bool:
         return True
     except Exception as e:
         logger.error("Failed to save market {}: {}", market.get("id", "unknown"), e)
+        return False
+
+
+def save_snapshot(market_id: str, yes_price: float, no_price: float, volume: float) -> bool:
+    """Write a price/volume snapshot for a market. Returns True on success."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("""
+            INSERT INTO market_snapshots (market_id, yes_price, no_price, volume, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+        """, (market_id, yes_price, no_price, volume, now))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to save snapshot for {}: {}", market_id, e)
         return False
 
 

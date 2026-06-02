@@ -5,9 +5,13 @@ import requests
 from datetime import datetime, timezone
 from loguru import logger
 
-# LM Studio endpoint (OpenAI-compatible)
-LM_STUDIO_URL = "http://127.0.0.1:1234/v1/chat/completions"
-LM_MODEL = "qwen2.5-14b-instruct"
+# LM Studio endpoint (OpenAI-compatible) — config-driven
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+from config import LM_STUDIO_HOST, OLLAMA_MODEL
+LM_STUDIO_URL = f"{LM_STUDIO_HOST}/v1/chat/completions"
+LM_MODEL = OLLAMA_MODEL
 LLM_LOG_PATH = "logs/llm_calls.log"
 
 # Configure LLM logger
