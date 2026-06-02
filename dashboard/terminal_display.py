@@ -9,8 +9,7 @@ from rich.text import Text
 from rich import box
 from loguru import logger
 
-from data.database import get_market_count, get_crypto_market_count
-from intelligence.market_scorer import get_top_markets
+from data.database import get_market_count, get_crypto_market_count, get_top_markets
 
 
 def _days_until(end_date_str: str) -> str:

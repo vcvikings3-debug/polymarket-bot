@@ -6,17 +6,15 @@ from datetime import datetime, timezone
 from loguru import logger
 
 # LM Studio endpoint (OpenAI-compatible) — config-driven
-import sys as _sys
-import os as _os
-_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import LM_STUDIO_HOST, OLLAMA_MODEL
 LM_STUDIO_URL = f"{LM_STUDIO_HOST}/v1/chat/completions"
 LM_MODEL = OLLAMA_MODEL
-LLM_LOG_PATH = "logs/llm_calls.log"
+LLM_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "llm_calls.log")
 
 # Configure LLM logger
-import sys
-import os
 os.makedirs(os.path.dirname(LLM_LOG_PATH), exist_ok=True)
 llm_logger = logger.bind(name="llm")
 llm_logger.add(LLM_LOG_PATH, rotation="10 MB", format="{time} | {message}")
@@ -128,10 +126,14 @@ def analyze_market_with_llm(market: dict) -> dict:
             confidence = float(parsed.get("confidence", 0))
             reasoning = str(parsed.get("reasoning", ""))[:200]
             edge_raw = parsed.get("edge", 0)
-            # Parse edge — could be a string like "0.08" or a number
+            # Parse edge — LLM may return a decimal (0.08) or a percentage ("8%")
             if isinstance(edge_raw, str):
                 try:
-                    edge = float(edge_raw.replace("%", "")) / 100.0
+                    stripped = edge_raw.strip()
+                    if "%" in stripped:
+                        edge = float(stripped.replace("%", "").strip()) / 100.0
+                    else:
+                        edge = float(stripped)
                 except (ValueError, TypeError):
                     edge = 0.0
             else:

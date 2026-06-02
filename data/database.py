@@ -167,6 +167,22 @@ def get_crypto_markets_only() -> list:
     return get_all_crypto_markets()
 
 
+def get_top_markets(limit: int = 20) -> list:
+    """Return top N crypto markets by volume, with llm_confidence exposed as 'score'."""
+    conn = _get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT *, COALESCE(llm_confidence, 0.0) AS score
+        FROM markets
+        WHERE is_crypto = 1
+        ORDER BY volume DESC
+        LIMIT ?
+    """, (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def get_market_by_id(market_id: str) -> dict | None:
     """Return a single market by its Polymarket ID."""
     conn = _get_connection()
