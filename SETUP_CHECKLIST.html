@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket Bot — New Collaborator Setup Checklist</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9f9f7; color: #1a1a1a; padding: 2rem 1rem; }
+  .container { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
+  .subtitle { font-size: 14px; color: #888; margin-bottom: 2rem; }
+  .progress-wrap { margin-bottom: 2rem; }
+  .progress-label { font-size: 12px; color: #888; display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .progress-bar-wrap { height: 6px; background: #e8e8e5; border-radius: 99px; overflow: hidden; }
+  .progress-bar { height: 100%; background: #1d9e75; border-radius: 99px; width: 0%; transition: width 0.3s ease; }
+  .section { margin-bottom: 2rem; }
+  .section-title { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: #aaa; margin-bottom: 1rem; padding-bottom: 6px; border-bottom: 0.5px solid #e8e8e5; }
+  .item { display: flex; align-items: flex-start; gap: 14px; padding: 14px 0; border-bottom: 0.5px solid #f0f0ee; }
+  .item:last-child { border-bottom: none; }
+  .checkbox { width: 20px; height: 20px; min-width: 20px; border-radius: 6px; border: 1px solid #d0d0cc; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .checkbox.checked { background: #e1f5ee; border-color: #1d9e75; }
+  .checkbox.checked::after { content: ''; display: block; width: 5px; height: 9px; border: 2px solid #1d9e75; border-top: none; border-left: none; transform: rotate(45deg) translateY(-1px); }
+  .name { font-size: 14px; font-weight: 500; margin-bottom: 3px; }
+  .name.done { color: #bbb; text-decoration: line-through; }
+  .desc { font-size: 13px; color: #666; line-height: 1.6; }
+  .link { font-size: 12px; color: #185fa5; margin-top: 4px; display: inline-block; text-decoration: none; }
+  .link:hover { text-decoration: underline; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; margin-left: 8px; font-weight: 400; }
+  .badge-required { background: #fcebeb; color: #a32d2d; }
+  .send-box { background: #f4f4f2; border-radius: 12px; padding: 1.25rem; margin-top: 1rem; }
+  .send-box h3 { font-size: 13px; font-weight: 500; margin-bottom: 10px; }
+  .send-item { font-size: 13px; color: #555; padding: 5px 0; display: flex; gap: 8px; align-items: flex-start; }
+  .send-item i { color: #aaa; font-size: 15px; margin-top: 1px; }
+  .onboard-link { display: block; margin-top: 1.5rem; background: #1d9e75; color: #fff; text-align: center; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 500; text-decoration: none; }
+  .onboard-link:hover { background: #0f6e56; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>New collaborator setup</h1>
+  <p class="subtitle">Polymarket Bot Project — complete every item below before joining the build</p>
+
+  <div class="progress-wrap">
+    <div class="progress-label"><span>Setup progress</span><span id="prog-text">0 of 13 complete</span></div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="prog-bar"></div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Software to install</div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">Python 3.12<span class="badge badge-required">required</span></div><div class="desc">During install, check "Add Python to PATH" — critical, without it nothing works.</div><a class="link" href="https://python.org/downloads" target="_blank">python.org/downloads ↗</a></div></div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">Node.js LTS<span class="badge badge-required">required</span></div><div class="desc">Click through all defaults. No special settings needed.</div><a class="link" href="https://nodejs.org" target="_blank">nodejs.org ↗</a></div></div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">Git<span class="badge badge-required">required</span></div><div class="desc">How your code stays in sync with the team. All defaults are fine.</div><a class="link" href="https://git-scm.com/downloads" target="_blank">git-scm.com/downloads ↗</a></div></div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">VS Code<span class="badge badge-required">required</span></div><div class="desc">The editor where all your code lives. All defaults are fine.</div><a class="link" href="https://code.visualstudio.com" target="_blank">code.visualstudio.com ↗</a></div></div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">LM Studio<span class="badge badge-required">required</span></div><div class="desc">Runs your local AI model. After installing: open it → Search tab → download Qwen3 7B or Llama 3.1 8B (Q4 version) → Local Server tab → Start Server.</div><a class="link" href="https://lmstudio.ai" target="_blank">lmstudio.ai ↗</a></div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">VS Code extensions</div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">Cline extension<span class="badge badge-required">required</span></div><div class="desc">Open VS Code → Extensions icon (4 squares on left sidebar) → search "Cline" → install. This is the AI coding agent that writes and runs all your code.</div></div></div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">Connect DeepSeek to Cline<span class="badge badge-required">required</span></div><div class="desc">Open Cline → Settings → Provider: DeepSeek → paste your API key → Model: deepseek-chat. Requires a DeepSeek account with ~$5 in credits first.</div></div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Accounts to create</div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">GitHub<span class="badge badge-required">required</span></div><div class="desc">Free account. Send your username to Cameron so he can add you as a collaborator.</div><a class="link" href="https://github.com" target="_blank">github.com ↗</a></div></div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">DeepSeek<span class="badge badge-required">required</span></div><div class="desc">Go to API Keys → create a key → copy it. Add $5 in credits under Billing. This powers Cline.</div><a class="link" href="https://platform.deepseek.com" target="_blank">platform.deepseek.com ↗</a></div></div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">Polymarket<span class="badge badge-required">required</span></div><div class="desc">Connect your Phantom wallet. Go to profile settings and generate an API key.</div><a class="link" href="https://polymarket.com" target="_blank">polymarket.com ↗</a></div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Crypto setup</div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">Phantom wallet<span class="badge badge-required">required</span></div><div class="desc">Download the browser extension. Create a wallet. Write your seed phrase on paper — never digitally, never share it with anyone ever.</div><a class="link" href="https://phantom.app" target="_blank">phantom.app ↗</a></div></div>
+    <div class="item"><div class="checkbox" onclick="toggle(this)"></div><div><div class="name">Buy USDC on Polygon<span class="badge badge-required">required</span></div><div class="desc">Buy USDC on Coinbase or Kraken. Send to Phantom wallet on the Polygon network — not Ethereum. Start with $10–20 to test.</div></div></div>
+  </div>
+
+  <div class="send-box">
+    <h3>Once everything above is done, send Cameron:</h3>
+    <div class="send-item"><i class="ti ti-at"></i> Your GitHub username</div>
+    <div class="send-item"><i class="ti ti-key"></i> Your Polymarket API key</div>
+    <div class="send-item"><i class="ti ti-wallet"></i> Your wallet public address (NOT your seed phrase or private key)</div>
+    <div class="send-item"><i class="ti ti-device-desktop"></i> Confirmation that LM Studio server is running</div>
+  </div>
+
+  <a class="onboard-link" href="https://github.com/vcvikings3-debug/polymarket-bot/blob/main/COOS_ONBOARDING.md" target="_blank">Once set up — open your AI onboarding prompt here ↗</a>
+</div>
+
+<script>
+const total = document.querySelectorAll('.checkbox').length;
+function toggle(el) {
+  el.classList.toggle('checked');
+  el.nextElementSibling.querySelector('.name').classList.toggle('done');
+  const done = document.querySelectorAll('.checkbox.checked').length;
+  document.getElementById('prog-text').textContent = done + ' of ' + total + ' complete';
+  document.getElementById('prog-bar').style.width = Math.round((done / total) * 100) + '%';
+}
+</script>
+</body>
+</html>
