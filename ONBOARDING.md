@@ -1,4 +1,4 @@
-My name is Coos. I am a collaborator on an active Python project called polymarket-bot. The project owner is Cameron (GitHub: vcvikings3-debug). My GitHub username is coosara2007.
+My name is (ask me my name). I am a collaborator on an active Python project called polymarket-bot. The project owner is Cameron (GitHub: vcvikings3-debug). My GitHub username is (ask me what my github username is).
 
 This is an autonomous Polymarket crypto prediction market betting bot. It fetches active crypto markets from the Polymarket Gamma API, analyzes them using a local LLM, runs a Kelly Criterion decision engine to size bets, and will place live bets via the Polymarket CLOB API in Phase 4.
 
@@ -9,7 +9,7 @@ My setup:
 - Local LLM: Running via LM Studio (either Qwen3 7B or Llama 3.1 8B — I will confirm which)
 - Python 3.12 installed
 - Git installed
-- GitHub account: coosara2007
+- GitHub account:
 
 The project is already 4 phases complete. I am joining to help build Phase 4 onward. Before I do anything I need you to help me get set up and oriented.
 
