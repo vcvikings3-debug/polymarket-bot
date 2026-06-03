@@ -18,10 +18,7 @@ from intelligence.market_scorer import analyze_market_with_llm
 from decision.bet_engine import evaluate_bet
 from decision.risk_manager import get_daily_stats, is_safe_to_bet
 from config import MAX_BET_SIZE, PAPER_TRADING, LIVE_TRADING, PAPER_STARTING_BANKROLL, DRY_RUN
-from utils.monitoring import (
-    init_sentry, capture_error, send_discord_alert,
-    DISCORD_COLOR_GREEN, DISCORD_COLOR_RED, DISCORD_COLOR_PURPLE,
-)
+from utils.monitoring import init_sentry, capture_error
 from loguru import logger
 import schedule
 
@@ -214,23 +211,6 @@ def main():
 
         print(f"  {'─' * 70}")
 
-        # ── Discord alerts for every PLACE BET recommendation ─────────────────
-        for market, analysis, bet, safe, verdict in recommendations:
-            if verdict == "PLACE BET":
-                sig = analysis["signal"]
-                color = DISCORD_COLOR_GREEN if sig == "BET_YES" else DISCORD_COLOR_RED
-                send_discord_alert(
-                    title=f"Trade Signal: {sig}",
-                    message=(
-                        f"**{market.get('question', 'Unknown')}**\n"
-                        f"Signal: `{sig}`\n"
-                        f"Confidence: `{analysis['confidence']:.2f}`\n"
-                        f"Edge: `{analysis['edge']:.4f}`\n"
-                        f"Recommended size: `${bet['recommended_size']:.4f}`"
-                    ),
-                    color=color,
-                )
-
         # ── Phase 2.6: Paper Trading ───────────────────────────────────────
         paper_engine = _get_paper_engine()
         if paper_engine is not None:
@@ -304,7 +284,6 @@ def main():
     except Exception as e:
         logger.error("Pipeline crashed: {}", e)
         capture_error(e, context={"pipeline": "main"})
-        send_discord_alert("Bot Crashed", f"Pipeline error: {e}", color=DISCORD_COLOR_PURPLE)
         raise
 
 

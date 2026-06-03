@@ -196,7 +196,6 @@ def weekly_evolution_cycle() -> dict:
     """
     from data.database import save_prompt_version, get_strategy_state, set_strategy_state
     from intelligence.historical_performance import detect_own_biases
-    from utils.monitoring import send_discord_alert, DISCORD_COLOR_BLUE
 
     logger.info("prompt_evolution: starting weekly evolution cycle")
 
@@ -209,9 +208,10 @@ def weekly_evolution_cycle() -> dict:
         biases = detect_own_biases()
 
         if not perf.get("sufficient_data"):
-            msg = f"Insufficient data for evolution ({perf.get('sample_size', 0)} predictions). Skipping."
-            logger.info("prompt_evolution: {}", msg)
-            send_discord_alert("Weekly Evolution Cycle", msg, color=DISCORD_COLOR_BLUE)
+            logger.info(
+                "prompt_evolution: insufficient data for evolution ({} predictions) — skipping",
+                perf.get("sample_size", 0),
+            )
             return {"evolved": False, "reason": "insufficient_data"}
 
         evolved_text = generate_evolved_prompt(
@@ -221,9 +221,7 @@ def weekly_evolution_cycle() -> dict:
         )
 
         if evolved_text == current.get("prompt_text"):
-            msg = "Evolution produced no change — current prompt retained."
-            logger.info("prompt_evolution: {}", msg)
-            send_discord_alert("Weekly Evolution Cycle", msg, color=DISCORD_COLOR_BLUE)
+            logger.info("prompt_evolution: evolution produced no change — current prompt retained")
             return {"evolved": False, "reason": "no_change"}
 
         new_version_num = current_version_num + 1
@@ -244,17 +242,11 @@ def weekly_evolution_cycle() -> dict:
 
         ab_result = run_ab_test(current_id, new_id)
 
-        summary = (
-            f"Weekly evolution complete.\n"
-            f"Baseline (v{current_version_num}): {perf.get('win_rate', 0):.0%} win rate, "
-            f"{perf.get('sample_size', 0)} samples.\n"
-            f"Biases addressed: {[b.get('bias_type') for b in biases] or 'none'}.\n"
-            f"New prompt v{new_version_num} created.\n"
-            f"A/B test result: {'PROMOTED' if ab_result.get('promoted') else 'TESTING'} — {ab_result.get('reason')}"
+        logger.info(
+            "prompt_evolution: weekly cycle complete — v{} created, A/B test: {}",
+            new_version_num,
+            "PROMOTED" if ab_result.get("promoted") else "TESTING",
         )
-
-        logger.info("prompt_evolution: weekly cycle complete — {}", summary)
-        send_discord_alert("Weekly Evolution Cycle Complete", summary, color=DISCORD_COLOR_BLUE)
 
         return {
             "evolved": True,

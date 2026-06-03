@@ -83,7 +83,7 @@ Both collaborators use **DeepSeek V3 + Cline + local LLM** for development assis
 - `intelligence/context_builder.py` — parallel orchestration (4 modules concurrent + sentiment after onchain), composite signal score (6-component weighted sum), `format_llm_brief()` → structured intelligence brief replacing bare prompt
 - `intelligence/market_scorer.py` — fully rewired to use intelligence layer; falls back to simple prompt on failure; records all predictions to DB; respects strategy adjustments (avoided categories, cooling periods)
 - `data/database.py` — added 4 new tables: `predictions`, `prompt_versions`, `signal_performance`, `strategy_state`; added `record_bet()`, full prediction tracking helpers, prompt versioning helpers, strategy state KV store
-- `config.py` — added `POLYGON_RPC_URL`, `DRY_RUN`, `CRYPTOPANIC_AUTH_TOKEN`, `ETHERSCAN_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`
+- `config.py` — added `POLYGON_RPC_URL`, `DRY_RUN`, `CRYPTOPANIC_AUTH_TOKEN`, `ETHERSCAN_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`; `DISCORD_UPDATES_WEBHOOK` removed (GitHub native webhook handles repo notifications)
 - `requirements.txt` — added feedparser, praw, pytrends, nltk, vaderSentiment, requests-cache, scipy
 - `main.py` — added `_setup_weekly_evolution()` (schedule every Sunday 03:00)
 
@@ -94,10 +94,16 @@ Both collaborators use **DeepSeek V3 + Cline + local LLM** for development assis
 - `paper_trading/performance_analyzer.py` — Sharpe ratio, max drawdown, Kelly accuracy, edge capture rate, calibration score by confidence bucket, signal attribution, category edge, time patterns, streaks, `generate_full_performance_report()`
 - `paper_trading/report_generator.py` — `generate_daily_report()` (embeds: bankroll, performance, calibration, go-live progress), `generate_trade_notification()` (entry/exit embeds to updates channel), `generate_readiness_report()` (full readiness report with recommended live settings), `generate_weekly_summary()`
 - `data/database.py` — added 4 new tables: `paper_positions`, `paper_bankroll_history`, `paper_daily_stats`, `go_live_readiness` + 16 new helper functions
-- `utils/monitoring.py` — added `DISCORD_COLOR_YELLOW`, `send_discord_update()` (sends to `DISCORD_UPDATES_WEBHOOK` separately from bets webhook)
+- `utils/monitoring.py` — added `DISCORD_COLOR_YELLOW`, `send_bet_alert` alias for `send_discord_alert`; both point to `DISCORD_BETS_WEBHOOK` only
 - `intelligence/market_scorer.py` — extended `_call_llm()` to extract `primary_signal`, `conflicting_signals`, `bias_check` from LLM JSON; `analyze_market_with_llm()` now returns `composite_signal` and `prompt_version_id` so paper engine can store them
 - `config.py` — added `DISCORD_UPDATES_WEBHOOK`, `PAPER_TRADING`, `LIVE_TRADING`, `PAPER_STARTING_BANKROLL`, `PAPER_MAX_DAILY_TRADES`, `PAPER_MAX_OPEN_POSITIONS`, `PAPER_MAX_CORRELATION_EXPOSURE`
 - `main.py` — Phase 2.6 block: resolution scan → simulate paper bets for every PLACE BET verdict → portfolio state summary; daily report and weekly summary scheduled
+
+**Discord channel strategy (post-restructure):**
+- `DISCORD_BETS_WEBHOOK` → `#github-bets` — receives ONLY: paper trade opened, paper trade closed, daily performance report, go-live readiness report, future live bet placed
+- `DISCORD_UPDATES_WEBHOOK` — retired from bot; GitHub's native webhook handles repo notifications
+- Pipeline errors, crashes, Sentry events → Sentry + loguru logs only, no Discord
+- Prompt evolution cycle results → loguru logs only, no Discord
 
 **Go-live criteria (all three must be met simultaneously):**
 1. 50+ completed paper trades (entered AND resolved)

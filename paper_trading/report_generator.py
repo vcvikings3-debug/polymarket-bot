@@ -8,7 +8,7 @@ from loguru import logger
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.monitoring import (
-    send_discord_update, send_discord_alert,
+    send_discord_alert,
     DISCORD_COLOR_GREEN, DISCORD_COLOR_RED, DISCORD_COLOR_BLUE,
     DISCORD_COLOR_YELLOW, DISCORD_COLOR_PURPLE,
 )
@@ -97,7 +97,7 @@ def generate_daily_report(performance_data: dict, paper_engine) -> None:
             f"Overall: {sum([criteria.get('c1_trades_met',0), criteria.get('c2_pnl_positive',0), criteria.get('c3_win_rate_met',0)])}/3 criteria met"
         )
 
-        send_discord_update("Daily Paper Trading Report", msg, color=pnl_color)
+        send_discord_alert("Daily Paper Trading Report", msg, color=pnl_color)
         logger.info("Daily paper trading report sent to Discord")
     except Exception as e:
         logger.error("report_generator.generate_daily_report failed: {}", e)
@@ -131,7 +131,7 @@ def generate_trade_notification(position: dict, action: str,
                 f"**Bankroll remaining:** ${current_bankroll:.4f}\n"
                 f"**Trades to go-live:** {trades_to_goal}"
             )
-            send_discord_update("Paper Trade Opened", msg, color=color)
+            send_discord_alert("Paper Trade Opened", msg, color=color)
 
         elif action in ("WIN", "LOSS"):
             gross_pnl = float(position.get("gross_pnl") or 0)
@@ -150,7 +150,7 @@ def generate_trade_notification(position: dict, action: str,
                 f"**Trades to go-live:** {trades_to_goal}"
             )
             title = f"Paper Trade Closed — {'WIN' if action == 'WIN' else 'LOSS'} {result_emoji}"
-            send_discord_update(title, msg, color=color)
+            send_discord_alert(title, msg, color=color)
 
         elif action == "VOID":
             msg = (
@@ -158,7 +158,7 @@ def generate_trade_notification(position: dict, action: str,
                 f"Market expired unresolved — position refunded.\n"
                 f"**Bankroll:** ${current_bankroll:.4f}"
             )
-            send_discord_update("Paper Trade Voided", msg, color=DISCORD_COLOR_YELLOW)
+            send_discord_alert("Paper Trade Voided", msg, color=DISCORD_COLOR_YELLOW)
 
     except Exception as e:
         logger.error("report_generator.generate_trade_notification failed: {}", e)
@@ -229,7 +229,7 @@ def generate_readiness_report(performance_data: dict, paper_engine) -> str:
             f"Cameron — this bot has proven itself. Your call."
         )
 
-        send_discord_update("GO-LIVE READINESS REPORT", report, color=DISCORD_COLOR_GREEN)
+        send_discord_alert("GO-LIVE READINESS REPORT", report, color=DISCORD_COLOR_GREEN)
         logger.info("Go-live readiness report sent to Discord")
         return report
     except Exception as e:
@@ -242,7 +242,7 @@ def generate_weekly_summary(performance_data: dict, week_trades: list) -> None:
     try:
         n = len(week_trades)
         if n == 0:
-            send_discord_update(
+            send_discord_alert(
                 "Weekly Paper Trading Summary",
                 "No paper trades resolved this week.",
                 color=DISCORD_COLOR_BLUE,
@@ -270,7 +270,7 @@ def generate_weekly_summary(performance_data: dict, week_trades: list) -> None:
         color = DISCORD_COLOR_GREEN if week_pnl > 0 else (
             DISCORD_COLOR_RED if week_pnl < 0 else DISCORD_COLOR_YELLOW
         )
-        send_discord_update("Weekly Paper Trading Summary", msg, color=color)
+        send_discord_alert("Weekly Paper Trading Summary", msg, color=color)
         logger.info("Weekly paper trading summary sent to Discord")
     except Exception as e:
         logger.error("report_generator.generate_weekly_summary failed: {}", e)

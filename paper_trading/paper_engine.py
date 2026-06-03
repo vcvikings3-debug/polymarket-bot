@@ -30,7 +30,7 @@ from paper_trading.performance_analyzer import generate_full_performance_report
 from paper_trading.report_generator import (
     generate_trade_notification, generate_readiness_report,
 )
-from utils.monitoring import send_discord_update, DISCORD_COLOR_BLUE
+
 
 
 def _slippage_rate(liquidity: float) -> float:
@@ -66,11 +66,6 @@ class PaperTradingEngine:
             self.current_bankroll = starting_bankroll
             self.peak_bankroll = starting_bankroll
             logger.info("Paper trading engine initialized — starting bankroll: ${:.2f}", starting_bankroll)
-            send_discord_update(
-                "Paper Trading Engine Started",
-                f"Starting bankroll: ${starting_bankroll:.2f}\nTarget: 50 completed trades before go-live evaluation.",
-                color=DISCORD_COLOR_BLUE,
-            )
         else:
             self.starting_bankroll = history[0]["bankroll_amount"]
             self.current_bankroll = history[-1]["bankroll_amount"]

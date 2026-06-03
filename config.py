@@ -26,7 +26,6 @@ DB_PATH = os.getenv("DB_PATH", "data/polymarket.db")
 # Monitoring & notifications
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 DISCORD_BETS_WEBHOOK = os.getenv("DISCORD_BETS_WEBHOOK", "")
-DISCORD_UPDATES_WEBHOOK = os.getenv("DISCORD_UPDATES_WEBHOOK", "")
 CODECOV_TOKEN = os.getenv("CODECOV_TOKEN", "")
 
 # Paper trading

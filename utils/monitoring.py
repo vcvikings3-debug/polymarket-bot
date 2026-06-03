@@ -1,4 +1,4 @@
-"""Sentry error monitoring and Discord webhook notification utilities."""
+"""Sentry error monitoring and Discord bet notification utilities."""
 
 import os
 import sys
@@ -6,7 +6,7 @@ import requests
 from loguru import logger
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import SENTRY_DSN, DISCORD_BETS_WEBHOOK, DISCORD_UPDATES_WEBHOOK
+from config import SENTRY_DSN, DISCORD_BETS_WEBHOOK
 
 DISCORD_COLOR_GREEN = 3066993    # BET_YES / wins
 DISCORD_COLOR_RED = 15158332     # BET_NO / losses
@@ -50,41 +50,25 @@ def capture_message(message, level="info"):
         logger.error("Failed to capture message to Sentry: {}", e)
 
 
-def send_discord_alert(title, message, color=None):
-    """Post a formatted embed to the configured Discord webhook.
+def send_discord_alert(title: str, message: str, color: int = None):
+    """Post a betting activity embed to #github-bets via DISCORD_BETS_WEBHOOK.
+
+    Only call this for actual betting events:
+        - Paper trade opened / closed
+        - Daily performance report
+        - Go-live readiness report
+        - Live bet placed (Phase 4)
+
+    All other notifications (errors, system events) go to Sentry and logs only.
 
     Colors:
-        DISCORD_COLOR_GREEN  — BET_YES signals
-        DISCORD_COLOR_RED    — BET_NO signals
-        DISCORD_COLOR_PURPLE — errors / crashes
-        DISCORD_COLOR_BLUE   — info (default)
+        DISCORD_COLOR_GREEN  — wins / BET_YES
+        DISCORD_COLOR_RED    — losses / BET_NO
+        DISCORD_COLOR_YELLOW — neutral / paper trading
+        DISCORD_COLOR_BLUE   — informational (default)
     """
     if not DISCORD_BETS_WEBHOOK:
-        logger.warning("DISCORD_BETS_WEBHOOK not configured — Discord alert skipped: {}", title)
-        return
-    if color is None:
-        color = DISCORD_COLOR_BLUE
-    payload = {
-        "embeds": [
-            {
-                "title": title,
-                "description": message,
-                "color": color,
-            }
-        ]
-    }
-    try:
-        resp = requests.post(DISCORD_BETS_WEBHOOK, json=payload, timeout=10)
-        resp.raise_for_status()
-        logger.info("Discord alert sent: {}", title)
-    except requests.exceptions.RequestException as e:
-        logger.error("Failed to send Discord alert '{}': {}", title, e)
-
-
-def send_discord_update(title: str, message: str, color: int = None):
-    """Post to the UPDATES webhook (paper trading reports, daily summaries, readiness)."""
-    if not DISCORD_UPDATES_WEBHOOK:
-        logger.debug("DISCORD_UPDATES_WEBHOOK not configured — update skipped: {}", title)
+        logger.debug("DISCORD_BETS_WEBHOOK not configured — alert skipped: {}", title)
         return
     if color is None:
         color = DISCORD_COLOR_BLUE
@@ -92,8 +76,12 @@ def send_discord_update(title: str, message: str, color: int = None):
         "embeds": [{"title": title[:256], "description": message[:4096], "color": color}]
     }
     try:
-        resp = requests.post(DISCORD_UPDATES_WEBHOOK, json=payload, timeout=10)
+        resp = requests.post(DISCORD_BETS_WEBHOOK, json=payload, timeout=10)
         resp.raise_for_status()
-        logger.info("Discord update sent: {}", title)
+        logger.info("Discord bet alert sent: {}", title)
     except requests.exceptions.RequestException as e:
-        logger.error("Failed to send Discord update '{}': {}", title, e)
+        logger.error("Failed to send Discord alert '{}': {}", title, e)
+
+
+# Alias — both names route to DISCORD_BETS_WEBHOOK
+send_bet_alert = send_discord_alert
