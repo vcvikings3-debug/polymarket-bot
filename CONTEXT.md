@@ -251,6 +251,7 @@ Before running git commit, the AI must:
 | Task | Assigned To | Status | Blockers |
 |------|-------------|--------|----------|
 | Monitor paper trading — accumulate 50 resolved trades | Cameron | In Progress | Markets need to close (days/weeks) |
+| Terry — create GitHub account and send username to Cameron | Terry | Pending | Terry to action |
 | Phase 4 — execution/wallet.py | Coos | Pending | Coos environment setup |
 | Phase 4 — execution/clob_client.py | Coos | Pending | Coos environment setup |
 | Phase 4 — wire into main.py | Coos | Pending | wallet.py and clob_client.py complete |
@@ -265,37 +266,21 @@ Before running git commit, the AI must:
 ## Last Confirmed Working Commit
 
 ```
-Phase 2.6 complete — Paper Trading Engine
+a48d194 — test: verify github-updates Discord webhook
 ```
 
-Pipeline confirmed working output (2026-06-02):
-- 500 markets fetched, crypto-flagged, saved, snapshots written
-- Intelligence layer firing for every market: "LLM using intelligence brief"
-- RSS feeds: 45 articles from CoinDesk/Decrypt/CoinTelegraph
-- CoinGecko trending: 10 items
-- DeFiLlama TVL: -7.3% 7d (SLIGHTLY_DECLINING)
-- Mempool: LOW @ 1 sat/vbyte
-- Technicals: RSI=15.6, MACD=BEARISH, BB=MIDDLE
-- Fear/Greed proxy: 46/100 (NEUTRAL)
-- Base rate: 13 question types computed from Gamma API resolved markets
-- LLM now citing Bayesian priors, whale signals, on-chain data in reasoning
-- 20 predictions recorded to predictions table
-- Prompt version 1 seeded to prompt_versions table
-- Weekly evolution scheduled (Sunday 03:00)
-- 17 PLACE BET recommendations
-- Clean exit confirmed
+Last full pipeline run (2026-06-02):
+- All phases confirmed working: Phase 1 → 2 → 2.5 → 2.6 → 3
+- 500 markets fetched, 45 crypto-flagged, intelligence briefs built for all 20 LLM markets
+- Confidence scores varied (0.35–0.95) — LLM discriminating, not anchoring
+- Paper trading: daily limit and duplicate-position checks working correctly
+- Discord daily report manually tested — embed fired to #github-bets confirmed
+- GitHub-updates Discord webhook verified via README.md test commit
+- Portfolio state: $7.31 bankroll, 3 open positions, 2 closed, 50% win rate, +$0.37 net PnL
 
-Phase 2.6 additions:
-- Phase 2.6 block fires after Phase 3: resolution scan → simulate_bet for each PLACE BET verdict
-- Daily limit (5 paper trades/day) correctly enforces position limits
-- Discord updates channel receives trade open/close notifications immediately
-- Paper bankroll tracking: WIN pays shares×$1×0.99 (1% resolution fee); LOSS deducted at entry
-- Test confirmed: WIN bankroll math correct ($9.235 → $10.88 on 0.75 bet at 0.45 price)
-- Resolution monitor correctly skips open markets; will auto-close when Polymarket resolves them
-- Portfolio state printed at end of every run
-
-Notes:
-- Binance funding rate API: 451 geo-blocked (graceful degradation — NEUTRAL returned)
-- CryptoPanic: requires free registration token (graceful degradation — skipped)
-- CoinGecko: 429 rate limits on some coins — cache prevents re-hit within 5 minutes
-- Reddit/pytrends/VADER: available when REDDIT_CLIENT_ID configured
+## Known Permanent Limitations (graceful degradation)
+- Binance funding rate API: 451 geo-blocked — returns NEUTRAL, no fix needed
+- CryptoPanic: `auth_token=free` returns 404 — register at cryptopanic.com for real token
+- CoinGecko: 429 rate limits on rapid multi-coin runs — 5-min TTL cache mitigates
+- Google Trends pytrends: 429 on rapid calls — gracefully skipped per market
+- Reddit/PRAW: requires REDDIT_CLIENT_ID/SECRET in .env to activate
