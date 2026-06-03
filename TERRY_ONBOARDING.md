@@ -1,14 +1,14 @@
-# COOS_ONBOARDING.md — AI Onboarding Prompt
+# TERRY_ONBOARDING.md — AI Onboarding Prompt
 
 **Paste this entire file into your AI (Cline / DeepSeek) as your first message when starting a session on this project.**
+
+> **Note:** Terry's GitHub username is TBD — account not yet created. Once you create your GitHub account, send your username to Cameron at c.christensen104@yahoo.com so he can add you as a collaborator on the repository and you can push code.
 
 ---
 
 ## Who You Are Working With
 
-You are assisting **Coos** (`coosara2007` on GitHub), a collaborator on the **polymarket-bot** project. The project owner is **Cameron** (`vcvikings3-debug`). Coos is joining mid-build to implement Phase 4 — live bet execution.
-
-There is also a third collaborator named **Terry** (GitHub username TBD — account not yet created) who will be joining the project. If you see commits or branches from an unfamiliar username, it may be Terry once his account is set up.
+You are assisting **Terry** (GitHub username TBD — pending account creation), a collaborator on the **polymarket-bot** project. The project owner is **Cameron** (`vcvikings3-debug`). There is also a second collaborator, **Coos** (`coosara2007`). Terry is joining the project as a collaborator.
 
 ---
 
@@ -20,13 +20,14 @@ There is also a third collaborator named **Terry** (GitHub username TBD — acco
 2. Filters to crypto-only markets using a strict keyword list
 3. Sends the top 20 by volume to a local LLM (LM Studio) for signal generation
 4. Runs a Kelly criterion decision engine to size bets
-5. (Phase 4 — your job) Places live bets via the Polymarket CLOB API using a USDC wallet on Polygon
+5. Simulates paper trades via the Paper Trading Engine (Phase 2.6)
+6. (Phase 4 — next up) Places live bets via the Polymarket CLOB API using a USDC wallet on Polygon
 
-Phases 0–3 are complete and confirmed working. Do not modify them.
+Phases 0–3 and Phase 2.5 (Deep Intelligence Layer) and Phase 2.6 (Paper Trading Engine) are complete and confirmed working. Do not modify them.
 
 ---
 
-## Coos's Local Setup
+## Terry's Local Setup
 
 | Item | Value |
 |------|-------|
@@ -37,17 +38,19 @@ Phases 0–3 are complete and confirmed working. Do not modify them.
 | LLM endpoint | `http://127.0.0.1:1234` |
 | Python | 3.12 |
 | Git | Installed |
-| GitHub username | `coosara2007` |
+| GitHub username | TBD — send to Cameron once created |
 
 ---
 
 ## Step 1 — Clone the Repo and Verify Your Environment
 
+> **Before this step:** Make sure Cameron has added your GitHub username as a collaborator on the repo. You cannot clone a private repo without access.
+
 Run these commands in order:
 
 ```bash
-git clone https://github.com/vcvikings3-debug/polymarket-bot C:\Users\Coos\polymarket-bot
-cd C:\Users\Coos\polymarket-bot
+git clone https://github.com/vcvikings3-debug/polymarket-bot C:\Users\Terry\polymarket-bot
+cd C:\Users\Terry\polymarket-bot
 pip install -r requirements.txt
 python tests/health_check.py
 ```
@@ -58,9 +61,11 @@ python tests/health_check.py
 
 ## Step 2 — Read the Project Context
 
-Read `CONTEXT.md` in full. After reading it, tell Coos verbatim:
+Read `CONTEXT.md` in full. After reading it, tell Terry verbatim:
 
 - What Phases 0–3 built (one sentence each)
+- What Phase 2.5 built (the Deep Intelligence Layer — one sentence)
+- What Phase 2.6 built (the Paper Trading Engine — one sentence)
 - Exactly what Phase 4 needs to build — list every task from the "What Phase 4 Needs to Build" section
 - Which two new files need to be created
 - Which existing file needs to be updated
@@ -90,7 +95,7 @@ Leave these blank for now — Cameron will provide them:
 
 ```
 SENTRY_DSN=
-DISCORD_WEBHOOK_URL=
+DISCORD_BETS_WEBHOOK=
 CODECOV_TOKEN=
 ```
 
@@ -116,6 +121,7 @@ python main.py
 - `[Phase 1] Fetching active markets...` — should pull 400–500 markets
 - `[KEY] Crypto-flagged...` — should find 30–60 crypto markets
 - `[Phase 2] Analyzing top 20...` — LLM should return BET_YES / BET_NO / SKIP signals, not all errors
+- `[Phase 2.6] Paper Trading...` — paper trading engine should print portfolio state
 - `Done. Exiting cleanly.` at the end
 
 If Phase 2 shows `LLM connection error` on every market, LM Studio is not running or the server is not started. Fix that first.
@@ -128,7 +134,7 @@ If you see real signals (BET_YES / BET_NO) but all verdicts are HOLD — that is
 
 Once `python main.py` exits cleanly with real LLM signals appearing in Phase 2, you are fully oriented and ready to build.
 
-**Read `PHASE4_BUILD.md` now.** That file contains your specific build instructions for Phase 4 — the execution layer.
+**Read `PHASE4_BUILD.md` now.** That file contains the specific build instructions for Phase 4 — the execution layer.
 
 **Do NOT start writing any Phase 4 code until you have read `PHASE4_BUILD.md` in full.**
 

@@ -12,12 +12,13 @@ This file exists for session continuity. Any AI assistant or collaborator pickin
 
 ## Collaborators
 
-| Name   | GitHub                | Role                        |
-|--------|-----------------------|-----------------------------|
-| Cameron | `vcvikings3-debug`   | Primary developer, project owner |
-| Coos   | `coosara2007`         | Collaborator                |
+| Name    | GitHub              | Role                             |
+|---------|---------------------|----------------------------------|
+| Cameron | `vcvikings3-debug`  | Primary developer, project owner |
+| Coos    | `coosara2007`       | Collaborator                     |
+| Terry   | TBD                 | Collaborator (GitHub account pending creation) |
 
-Both collaborators use **DeepSeek V3 + Cline + local LLM** for development assistance.
+All collaborators use **DeepSeek V3 + Cline + local LLM** for development assistance.
 
 ---
 
