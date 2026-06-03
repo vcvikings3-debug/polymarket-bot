@@ -22,3 +22,8 @@ MAX_BANKROLL_RISK = float(os.getenv("MAX_BANKROLL_RISK", 0.20))
 
 # Database
 DB_PATH = os.getenv("DB_PATH", "data/polymarket.db")
+
+# Monitoring & notifications
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+CODECOV_TOKEN = os.getenv("CODECOV_TOKEN", "")

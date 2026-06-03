@@ -11,4 +11,6 @@ numpy
 ollama
 loguru
 pytest
+pytest-cov
 rich
+sentry-sdk[flask]
