@@ -27,3 +27,14 @@ DB_PATH = os.getenv("DB_PATH", "data/polymarket.db")
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 CODECOV_TOKEN = os.getenv("CODECOV_TOKEN", "")
+
+# Phase 4 execution
+POLYGON_RPC_URL = os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com")
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+
+# Intelligence layer — optional API keys (modules degrade gracefully if absent)
+CRYPTOPANIC_AUTH_TOKEN = os.getenv("CRYPTOPANIC_AUTH_TOKEN", "free")
+ETHERSCAN_API_KEY = os.getenv("ETHERSCAN_API_KEY", "")
+REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID", "")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "")
+REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "polymarket-bot/1.0")

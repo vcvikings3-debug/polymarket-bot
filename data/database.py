@@ -83,12 +83,69 @@ def initialize_db():
             pnl REAL DEFAULT 0,
             placed_at TEXT,
             resolved_at TEXT,
+            order_id TEXT,
             FOREIGN KEY (market_id) REFERENCES markets(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            market_id TEXT,
+            signal TEXT,
+            confidence REAL,
+            edge REAL,
+            reasoning TEXT,
+            context_snapshot TEXT,
+            prompt_version_id INTEGER,
+            predicted_at TEXT,
+            resolved_at TEXT,
+            actual_outcome TEXT,
+            was_correct INTEGER,
+            pnl REAL,
+            FOREIGN KEY (market_id) REFERENCES markets(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prompt_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version_number INTEGER,
+            prompt_text TEXT,
+            created_at TEXT,
+            win_rate REAL,
+            avg_edge REAL,
+            calibration_score REAL,
+            sample_size INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 0,
+            parent_version_id INTEGER,
+            evolution_notes TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS signal_performance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_name TEXT,
+            was_present INTEGER,
+            prediction_was_correct INTEGER,
+            market_id TEXT,
+            recorded_at TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS strategy_state (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT UNIQUE,
+            value TEXT,
+            updated_at TEXT
         )
     """)
 
     conn.commit()
     _ensure_columns(conn)
+    _ensure_bets_columns(conn)
     conn.close()
     logger.info("Database initialized at {}", DB_PATH)
 
@@ -213,6 +270,16 @@ def get_crypto_market_count() -> int:
     return count
 
 
+def _ensure_bets_columns(conn):
+    """Add order_id column to bets table if missing."""
+    cursor = conn.execute("PRAGMA table_info(bets)")
+    existing = {row["name"] for row in cursor.fetchall()}
+    if "order_id" not in existing:
+        logger.info("Adding missing column 'order_id' to bets table")
+        conn.execute("ALTER TABLE bets ADD COLUMN order_id TEXT")
+    conn.commit()
+
+
 def save_llm_analysis(market_id: str, signal: str, confidence: float, reasoning: str, edge: float) -> bool:
     """Update a market record with LLM analysis results. Returns True on success."""
     from datetime import datetime, timezone
@@ -234,4 +301,277 @@ def save_llm_analysis(market_id: str, signal: str, confidence: float, reasoning:
         return True
     except Exception as e:
         logger.error("Failed to save LLM analysis for {}: {}", market_id, e)
+        return False
+
+
+# ── Phase 4: bet recording ─────────────────────────────────────────────────
+
+def record_bet(market_id: str, side: str, size: float, outcome: str, order_id: str = None) -> bool:
+    """Insert a bet record into the bets table. Returns True on success."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("""
+            INSERT INTO bets (market_id, side, size, outcome, placed_at, order_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (market_id, side, size, outcome, now, order_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to record bet for {}: {}", market_id, e)
+        return False
+
+
+# ── Phase 2.5: prediction tracking ────────────────────────────────────────
+
+def save_prediction(market_id: str, signal: str, confidence: float, edge: float,
+                    reasoning: str, context_snapshot: str, prompt_version_id: int = None) -> int:
+    """Save an LLM prediction before outcome is known. Returns new row id, 0 on failure."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = conn.execute("""
+            INSERT INTO predictions
+                (market_id, signal, confidence, edge, reasoning, context_snapshot,
+                 prompt_version_id, predicted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (market_id, signal, confidence, edge, reasoning, context_snapshot,
+              prompt_version_id, now))
+        conn.commit()
+        row_id = cursor.lastrowid
+        conn.close()
+        return row_id
+    except Exception as e:
+        logger.error("Failed to save prediction for {}: {}", market_id, e)
+        return 0
+
+
+def update_prediction_resolution(market_id: str, actual_outcome: str, pnl: float,
+                                  resolved_at: str = None) -> bool:
+    """Mark a prediction as resolved with actual outcome and PnL. Returns True on success."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        if resolved_at is None:
+            resolved_at = datetime.now(timezone.utc).isoformat()
+        row = conn.execute(
+            "SELECT id, signal FROM predictions WHERE market_id = ? AND resolved_at IS NULL "
+            "ORDER BY predicted_at DESC LIMIT 1",
+            (market_id,)
+        ).fetchone()
+        if not row:
+            conn.close()
+            return False
+        signal = row["signal"]
+        was_correct = 1 if (
+            (signal == "BET_YES" and actual_outcome == "YES") or
+            (signal == "BET_NO" and actual_outcome == "NO")
+        ) else 0
+        conn.execute("""
+            UPDATE predictions SET
+                resolved_at = ?, actual_outcome = ?, was_correct = ?, pnl = ?
+            WHERE id = ?
+        """, (resolved_at, actual_outcome, was_correct, pnl, row["id"]))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to update resolution for {}: {}", market_id, e)
+        return False
+
+
+def get_resolved_predictions(limit: int = 500) -> list:
+    """Return resolved predictions ordered by most recent."""
+    try:
+        conn = _get_connection()
+        rows = conn.execute("""
+            SELECT * FROM predictions
+            WHERE resolved_at IS NOT NULL AND was_correct IS NOT NULL
+            ORDER BY resolved_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("Failed to get resolved predictions: {}", e)
+        return []
+
+
+def get_unresolved_predictions(limit: int = 200) -> list:
+    """Return predictions that have not yet been resolved."""
+    try:
+        conn = _get_connection()
+        rows = conn.execute("""
+            SELECT * FROM predictions
+            WHERE resolved_at IS NULL
+            ORDER BY predicted_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("Failed to get unresolved predictions: {}", e)
+        return []
+
+
+# ── Phase 2.5: prompt versioning ──────────────────────────────────────────
+
+def save_prompt_version(version_number: int, prompt_text: str,
+                        evolution_notes: str = None, parent_version_id: int = None) -> int:
+    """Insert a new prompt version. Returns new row id, 0 on failure."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = conn.execute("""
+            INSERT INTO prompt_versions
+                (version_number, prompt_text, created_at, is_active, evolution_notes, parent_version_id)
+            VALUES (?, ?, ?, 0, ?, ?)
+        """, (version_number, prompt_text, now, evolution_notes, parent_version_id))
+        conn.commit()
+        row_id = cursor.lastrowid
+        conn.close()
+        return row_id
+    except Exception as e:
+        logger.error("Failed to save prompt version {}: {}", version_number, e)
+        return 0
+
+
+def get_active_prompt_version() -> dict | None:
+    """Return the currently active prompt version, or None if none set."""
+    try:
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT * FROM prompt_versions WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get active prompt version: {}", e)
+        return None
+
+
+def set_active_prompt(version_id: int) -> bool:
+    """Deactivate all prompt versions and activate the specified one."""
+    try:
+        conn = _get_connection()
+        conn.execute("UPDATE prompt_versions SET is_active = 0")
+        conn.execute("UPDATE prompt_versions SET is_active = 1 WHERE id = ?", (version_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to set active prompt {}: {}", version_id, e)
+        return False
+
+
+def update_prompt_performance(version_id: int, win_rate: float, avg_edge: float,
+                               calibration_score: float, sample_size: int) -> bool:
+    """Update performance stats for a prompt version."""
+    try:
+        conn = _get_connection()
+        conn.execute("""
+            UPDATE prompt_versions SET
+                win_rate = ?, avg_edge = ?, calibration_score = ?, sample_size = ?
+            WHERE id = ?
+        """, (win_rate, avg_edge, calibration_score, sample_size, version_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to update prompt performance for {}: {}", version_id, e)
+        return False
+
+
+# ── Phase 2.5: signal performance ─────────────────────────────────────────
+
+def save_signal_performance(signal_name: str, was_present: bool,
+                             prediction_was_correct: bool, market_id: str) -> bool:
+    """Record whether a signal was present and whether the prediction was correct."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("""
+            INSERT INTO signal_performance
+                (signal_name, was_present, prediction_was_correct, market_id, recorded_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (signal_name, 1 if was_present else 0, 1 if prediction_was_correct else 0,
+              market_id, now))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to save signal performance: {}", e)
+        return False
+
+
+def get_signal_performance_stats() -> dict:
+    """Return win rate when each signal was present vs absent."""
+    try:
+        conn = _get_connection()
+        rows = conn.execute("""
+            SELECT signal_name, was_present,
+                   COUNT(*) as total,
+                   SUM(prediction_was_correct) as wins
+            FROM signal_performance
+            GROUP BY signal_name, was_present
+        """).fetchall()
+        conn.close()
+        stats = {}
+        for row in rows:
+            name = row["signal_name"]
+            if name not in stats:
+                stats[name] = {"present_win_rate": None, "absent_win_rate": None,
+                               "present_count": 0, "absent_count": 0}
+            total = row["total"]
+            wins = row["wins"] or 0
+            rate = wins / total if total > 0 else 0.0
+            if row["was_present"]:
+                stats[name]["present_win_rate"] = round(rate, 4)
+                stats[name]["present_count"] = total
+            else:
+                stats[name]["absent_win_rate"] = round(rate, 4)
+                stats[name]["absent_count"] = total
+        return stats
+    except Exception as e:
+        logger.error("Failed to get signal performance stats: {}", e)
+        return {}
+
+
+# ── Phase 2.5: strategy state key-value store ─────────────────────────────
+
+def get_strategy_state(key: str, default=None):
+    """Read a strategy state value by key. Returns default if not set."""
+    try:
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT value FROM strategy_state WHERE key = ?", (key,)
+        ).fetchone()
+        conn.close()
+        return row["value"] if row else default
+    except Exception as e:
+        logger.error("Failed to get strategy state {}: {}", key, e)
+        return default
+
+
+def set_strategy_state(key: str, value: str) -> bool:
+    """Upsert a strategy state key-value pair."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("""
+            INSERT INTO strategy_state (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+        """, (key, value, now))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to set strategy state {}: {}", key, e)
         return False

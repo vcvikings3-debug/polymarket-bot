@@ -23,13 +23,25 @@ from utils.monitoring import (
     DISCORD_COLOR_GREEN, DISCORD_COLOR_RED, DISCORD_COLOR_PURPLE,
 )
 from loguru import logger
+import schedule
 
 # Max crypto markets to send to LLM per run (keeps run time reasonable)
 LLM_ANALYSIS_CAP = 20
 
 
+def _setup_weekly_evolution():
+    """Wire weekly prompt evolution to run every Sunday at 03:00."""
+    try:
+        from intelligence.prompt_evolution_engine import weekly_evolution_cycle
+        schedule.every().sunday.at("03:00").do(weekly_evolution_cycle)
+        logger.info("Weekly prompt evolution scheduled for Sunday 03:00")
+    except Exception as e:
+        logger.warning("Could not schedule weekly evolution: {}", e)
+
+
 def main():
     init_sentry()
+    _setup_weekly_evolution()
 
     print("=" * 70)
     print("  POLYMARKET BOT -- Phase 1 + 2 + 3 Pipeline")

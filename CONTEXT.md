@@ -47,8 +47,9 @@ Both collaborators use **DeepSeek V3 + Cline + local LLM** for development assis
 | 0     | Complete    | Project scaffold — directory structure, config, `.env`   |
 | 1     | Complete    | Gamma API connected, crypto filter, SQLite storage       |
 | 2     | Complete    | LM Studio wired, LLM analysis, BET_YES/BET_NO/SKIP signals saved to DB |
+| 2.5   | **Complete** | Deep Intelligence Layer — news, on-chain, sentiment, self-learning, base rates |
 | 3     | Complete    | Decision engine — Kelly sizing, risk manager, recommendations table |
-| 4     | **Next**    | CLOB API auth, wallet connection, USDC balance check, live bet placement |
+| 4     | Next        | CLOB API auth, wallet connection, USDC balance check, live bet placement |
 | 5     | Planned     | Flask dashboard — live view of markets, signals, P&L     |
 | 6     | Planned     | Scheduler — run pipeline on a cron/loop automatically    |
 
@@ -70,6 +71,20 @@ Both collaborators use **DeepSeek V3 + Cline + local LLM** for development assis
 ### Phase 2 — LLM Intelligence Layer
 - `intelligence/market_scorer.py` — sends each market to Qwen2.5 via LM Studio; builds structured prompt with YES/NO prices, liquidity, days-to-resolution; parses JSON response (`BET_YES` / `BET_NO` / `SKIP` + confidence + reasoning + edge); robust fallback parsing; logs all calls to `logs/llm_calls.log`
 - `data/database.py` — `save_llm_analysis()` writes signal back to the `markets` row
+
+### Phase 2.5 — Deep Intelligence Layer (NEW)
+- `intelligence/news_analyzer.py` — multi-source news (RSS: CoinDesk/Decrypt/CoinTelegraph, CoinGecko trending, PRAW Reddit optional), velocity scoring, narrative bias detection, keyword extraction
+- `intelligence/onchain_analyzer.py` — Binance perpetual funding rates, CoinGecko exchange flows, DeFiLlama TVL trend, mempool.space congestion, whale activity proxy, RSI/MACD/Bollinger technicals, Fear/Greed proxy. In-memory 5-minute TTL cache
+- `intelligence/sentiment_engine.py` — VADER Reddit sentiment (when PRAW configured), pytrends Google Trends, crowd psychology detection (FOMO/PANIC/EUPHORIA/CAPITULATION/COMPLACENCY), smart money divergence (-1 to 1)
+- `intelligence/historical_performance.py` — prediction recording, resolution tracking, accuracy by category, confidence calibration, bias detection (RECENCY/NARRATIVE/CONFIRMATION), `generate_strategy_adjustment()` (THE CORE), `auto_evolve_prompt()`
+- `intelligence/prompt_evolution_engine.py` — weekly evolution cycle, prompt versioning, A/B testing with statistical significance (scipy z-test), `generate_evolved_prompt()` via LM Studio
+- `intelligence/base_rate_calculator.py` — queries Gamma API for resolved markets by type, Bayesian prior formula (40% history + 60% current price), 13 question types
+- `intelligence/context_builder.py` — parallel orchestration (4 modules concurrent + sentiment after onchain), composite signal score (6-component weighted sum), `format_llm_brief()` → structured intelligence brief replacing bare prompt
+- `intelligence/market_scorer.py` — fully rewired to use intelligence layer; falls back to simple prompt on failure; records all predictions to DB; respects strategy adjustments (avoided categories, cooling periods)
+- `data/database.py` — added 4 new tables: `predictions`, `prompt_versions`, `signal_performance`, `strategy_state`; added `record_bet()`, full prediction tracking helpers, prompt versioning helpers, strategy state KV store
+- `config.py` — added `POLYGON_RPC_URL`, `DRY_RUN`, `CRYPTOPANIC_AUTH_TOKEN`, `ETHERSCAN_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`
+- `requirements.txt` — added feedparser, praw, pytrends, nltk, vaderSentiment, requests-cache, scipy
+- `main.py` — added `_setup_weekly_evolution()` (schedule every Sunday 03:00)
 
 ### Phase 3 — Decision Engine
 - `decision/bet_engine.py` — `evaluate_bet(market, llm_result)`:
@@ -214,7 +229,9 @@ Before running git commit, the AI must:
 | Phase 4 — wire into main.py | Coos | Pending | wallet.py and clob_client.py complete |
 | Phase 4 — live test | Cameron | Pending | Polymarket credentials + USDC |
 | Phase 5 — Flask dashboard | Cameron + Coos | Pending | Phase 4 complete |
-| Raise MAX_BANKROLL_RISK to 5.00 | Cameron | Pending | USDC in wallet |
+| Get CryptoPanic API token (free registration) | Cameron | Optional | Token needed for CryptoPanic news source |
+| Configure REDDIT_CLIENT_ID/SECRET for PRAW | Cameron | Optional | Enables Reddit sentiment scoring |
+| Phase 2.5 self-learning: accumulate 10+ predictions then resolve them | Cameron | In Progress | Markets need to close |
 | Switch to Ollama from LM Studio | Cameron | Pending | When ready for 24/7 headless |
 
 ---
@@ -222,12 +239,28 @@ Before running git commit, the AI must:
 ## Last Confirmed Working Commit
 
 ```
-4c90f01 — Phase 3 complete -- decision engine, Kelly criterion sizing, risk manager
+Phase 2.5 complete — Deep Intelligence Layer
 ```
 
-Pipeline confirmed working output (2026-06-01):
-- 500 markets fetched, 45 crypto-flagged, 45 saved, 45 snapshots written
-- 20 markets analyzed by LLM
-- All signals valid (BET_YES / BET_NO)
-- Decision engine running cleanly, daily stats table printing
+Pipeline confirmed working output (2026-06-02):
+- 500 markets fetched, crypto-flagged, saved, snapshots written
+- Intelligence layer firing for every market: "LLM using intelligence brief"
+- RSS feeds: 45 articles from CoinDesk/Decrypt/CoinTelegraph
+- CoinGecko trending: 10 items
+- DeFiLlama TVL: -7.3% 7d (SLIGHTLY_DECLINING)
+- Mempool: LOW @ 1 sat/vbyte
+- Technicals: RSI=15.6, MACD=BEARISH, BB=MIDDLE
+- Fear/Greed proxy: 46/100 (NEUTRAL)
+- Base rate: 13 question types computed from Gamma API resolved markets
+- LLM now citing Bayesian priors, whale signals, on-chain data in reasoning
+- 20 predictions recorded to predictions table
+- Prompt version 1 seeded to prompt_versions table
+- Weekly evolution scheduled (Sunday 03:00)
+- 17 PLACE BET recommendations
 - Clean exit confirmed
+
+Notes:
+- Binance funding rate API: 451 geo-blocked (graceful degradation — NEUTRAL returned)
+- CryptoPanic: requires free registration token (graceful degradation — skipped)
+- CoinGecko: 429 rate limits on some coins — cache prevents re-hit within 5 minutes
+- Reddit/pytrends/VADER: available when REDDIT_CLIENT_ID configured

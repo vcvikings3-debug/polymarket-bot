@@ -14,3 +14,10 @@ pytest
 pytest-cov
 rich
 sentry-sdk[flask]
+feedparser
+praw
+pytrends
+nltk
+vaderSentiment
+requests-cache
+scipy
