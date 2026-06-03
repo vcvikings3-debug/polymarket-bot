@@ -49,3 +49,5 @@ polymarket-bot/
 - Python 3.12+
 - Ollama (with qwen2.5:14b or compatible model) or LM Studio running locally
 - USDC wallet on Polygon with API credentials from Polymarket
+
+Webhook test — github-updates channel
