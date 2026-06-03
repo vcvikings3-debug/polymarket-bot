@@ -4,6 +4,12 @@
 
 ---
 
+## Before You Start
+
+Read CONTEXT.md completely. At the end of every commit you make, update CONTEXT.md with what you built, the current phase status, and what needs to happen next. This is not optional — it is required on every single commit.
+
+---
+
 ## Context
 
 Phases 0–3 are complete and confirmed working on Cameron's machine. The pipeline fetches markets, scores them with a local LLM, runs the decision engine, and prints a recommendations table. No bets are placed yet — the execution layer does not exist.

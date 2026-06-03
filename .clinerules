@@ -1,0 +1,26 @@
+# polymarket-bot Cline Rules
+# Read this before every session
+
+## Project
+Autonomous Polymarket crypto betting bot. Two collaborators: Cameron (vcvikings3-debug) and Coos (coosara2007).
+
+## Before Every Commit
+1. Update CONTEXT.md — what was built, phase statuses, last commit hash, next steps, who is doing what
+2. Never commit without updating CONTEXT.md first
+3. Never commit .env
+
+## Branch Rules
+- Never push to main directly
+- Branch name = what you are building (e.g. phase-4-execution)
+- Always open a pull request for Cameron to review
+
+## Code Rules
+- Never touch Phases 1-3 code unless fixing a confirmed bug
+- Always use loguru for logging
+- Always add try/except error handling
+- DRY_RUN=true must be default for any betting code
+
+## On Session Start
+- Read CONTEXT.md first
+- Check Next Steps table to understand current priorities
+- Confirm which branch you are on before writing any code

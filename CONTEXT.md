@@ -168,6 +168,57 @@ All of these must be present in `.env` at the project root. See `.env.example` f
 
 ---
 
+## Collaboration Rules
+
+These rules apply to ALL AI assistants (Claude, Cline, DeepSeek) working on this project.
+
+### On Every Commit
+Before running git commit, the AI must:
+1. Update CONTEXT.md with:
+   - What was built or changed in this session
+   - Current status of every phase (Complete / In Progress / Pending)
+   - Last confirmed working commit hash
+   - Any new files created and their purpose
+   - Any known issues or bugs discovered
+2. Update the "Next Steps" section with:
+   - What needs to be built next
+   - Who is assigned to it (Cameron or Coos)
+   - Any blockers or dependencies
+3. Never commit without updating CONTEXT.md first — no exceptions
+
+### Branch Rules
+- Never push directly to main
+- Always create a branch named after what you are building
+- Always open a pull request and tag Cameron for review
+- Never merge without Cameron's approval
+
+### .env Rules
+- Never commit .env under any circumstances
+- Never log or print real API keys, private keys, or webhook URLs
+- Always use .env.example for documenting new variables
+
+### Code Rules
+- Never touch Phase 1, 2, or 3 code unless fixing a confirmed bug
+- Always add error handling and loguru logging to new functions
+- Always test before committing
+- DRY_RUN=true must be the default for any betting code
+
+---
+
+## Next Steps
+
+| Task | Assigned To | Status | Blockers |
+|------|-------------|--------|----------|
+| Phase 4 — execution/wallet.py | Coos | Pending | Coos environment setup |
+| Phase 4 — execution/clob_client.py | Coos | Pending | Coos environment setup |
+| Phase 4 — wire into main.py | Coos | Pending | wallet.py and clob_client.py complete |
+| Phase 4 — live test | Cameron | Pending | Polymarket credentials + USDC |
+| Phase 5 — Flask dashboard | Cameron + Coos | Pending | Phase 4 complete |
+| Raise MAX_BANKROLL_RISK to 5.00 | Cameron | Pending | USDC in wallet |
+| Switch to Ollama from LM Studio | Cameron | Pending | When ready for 24/7 headless |
+
+---
+
 ## Last Confirmed Working Commit
 
 ```

@@ -141,3 +141,4 @@ Once `python main.py` exits cleanly with real LLM signals appearing in Phase 2, 
 5. **Always read `CONTEXT.md` before asking questions** — most answers are already there
 6. **Branch naming:** use the name specified in your build file (e.g., `phase-4-execution`)
 7. **Do not merge your own pull requests** — Cameron reviews and merges
+8. **Every commit must include an update to CONTEXT.md** — what was built, phase statuses, next steps, who is doing what next. Your AI must do this automatically before every git commit. No exceptions.
