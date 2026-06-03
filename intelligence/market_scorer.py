@@ -134,6 +134,9 @@ def _call_llm(system_prompt: str, user_prompt: str, market_question: str) -> dic
                 "confidence": min(max(confidence, 0.0), 1.0),
                 "reasoning": reasoning,
                 "edge": edge,
+                "primary_signal": str(parsed.get("primary_signal") or "")[:150],
+                "conflicting_signals": str(parsed.get("conflicting_signals") or "")[:200],
+                "bias_check": str(parsed.get("bias_check") or "")[:150],
             }
             logger.info("LLM result: {} confidence={:.2f} edge={:.4f}", signal, confidence, edge)
             llm_logger.info("RESULT market={} signal={} conf={} edge={}", market_question[:60], signal, confidence, edge)
@@ -278,5 +281,11 @@ def analyze_market_with_llm(market: dict) -> dict:
         )
     except Exception as e:
         logger.warning("Failed to record prediction for {}: {}", question[:50], e)
+
+    # Attach intelligence metadata so paper_engine can use it without re-fetching
+    result["composite_signal"] = full_context.get("composite_signal", 0.5) if full_context else 0.5
+    result["prompt_version_id"] = prompt_version_id
+    result.setdefault("primary_signal", "")
+    result.setdefault("conflicting_signals", "")
 
     return result

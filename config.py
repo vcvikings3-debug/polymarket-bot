@@ -25,8 +25,17 @@ DB_PATH = os.getenv("DB_PATH", "data/polymarket.db")
 
 # Monitoring & notifications
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+DISCORD_BETS_WEBHOOK = os.getenv("DISCORD_BETS_WEBHOOK", "")
+DISCORD_UPDATES_WEBHOOK = os.getenv("DISCORD_UPDATES_WEBHOOK", "")
 CODECOV_TOKEN = os.getenv("CODECOV_TOKEN", "")
+
+# Paper trading
+PAPER_TRADING = os.getenv("PAPER_TRADING", "true").lower() == "true"
+LIVE_TRADING = os.getenv("LIVE_TRADING", "false").lower() == "true"
+PAPER_STARTING_BANKROLL = float(os.getenv("PAPER_STARTING_BANKROLL", "10.00"))
+PAPER_MAX_DAILY_TRADES = int(os.getenv("PAPER_MAX_DAILY_TRADES", "5"))
+PAPER_MAX_OPEN_POSITIONS = int(os.getenv("PAPER_MAX_OPEN_POSITIONS", "10"))
+PAPER_MAX_CORRELATION_EXPOSURE = float(os.getenv("PAPER_MAX_CORRELATION_EXPOSURE", "0.40"))
 
 # Phase 4 execution
 POLYGON_RPC_URL = os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com")

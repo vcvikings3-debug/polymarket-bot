@@ -47,7 +47,8 @@ Both collaborators use **DeepSeek V3 + Cline + local LLM** for development assis
 | 0     | Complete    | Project scaffold — directory structure, config, `.env`   |
 | 1     | Complete    | Gamma API connected, crypto filter, SQLite storage       |
 | 2     | Complete    | LM Studio wired, LLM analysis, BET_YES/BET_NO/SKIP signals saved to DB |
-| 2.5   | **Complete** | Deep Intelligence Layer — news, on-chain, sentiment, self-learning, base rates |
+| 2.5   | Complete    | Deep Intelligence Layer — news, on-chain, sentiment, self-learning, base rates |
+| 2.6   | **Complete** | Paper Trading Engine — simulation, resolution monitoring, portfolio management, go-live readiness |
 | 3     | Complete    | Decision engine — Kelly sizing, risk manager, recommendations table |
 | 4     | Next        | CLOB API auth, wallet connection, USDC balance check, live bet placement |
 | 5     | Planned     | Flask dashboard — live view of markets, signals, P&L     |
@@ -85,6 +86,24 @@ Both collaborators use **DeepSeek V3 + Cline + local LLM** for development assis
 - `config.py` — added `POLYGON_RPC_URL`, `DRY_RUN`, `CRYPTOPANIC_AUTH_TOKEN`, `ETHERSCAN_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`
 - `requirements.txt` — added feedparser, praw, pytrends, nltk, vaderSentiment, requests-cache, scipy
 - `main.py` — added `_setup_weekly_evolution()` (schedule every Sunday 03:00)
+
+### Phase 2.6 — Paper Trading Engine (NEW)
+- `paper_trading/paper_engine.py` — `PaperTradingEngine` class: `simulate_bet()` (slippage simulation + fee deduction + pre-flight portfolio checks), `resolve_paper_position()` (closes winning/losing positions, feeds self-learning system), `check_go_live_readiness()` (3-criteria evaluator, Discord notification), `get_portfolio_state()`, `scan_for_resolutions()`
+- `paper_trading/portfolio_manager.py` — correlation groups (BTC/ETH/SOL/DeFi/Macro), diversification checks (max 3 per correlation group, max 10 open, 80% exposure cap), Monte Carlo VaR (1000 sims)
+- `paper_trading/resolution_monitor.py` — `scan_all_open_positions()` (Gamma API resolution checking each cycle), `get_market_resolution_status()`, void handling for expired markets, DISPUTED status tracking
+- `paper_trading/performance_analyzer.py` — Sharpe ratio, max drawdown, Kelly accuracy, edge capture rate, calibration score by confidence bucket, signal attribution, category edge, time patterns, streaks, `generate_full_performance_report()`
+- `paper_trading/report_generator.py` — `generate_daily_report()` (embeds: bankroll, performance, calibration, go-live progress), `generate_trade_notification()` (entry/exit embeds to updates channel), `generate_readiness_report()` (full readiness report with recommended live settings), `generate_weekly_summary()`
+- `data/database.py` — added 4 new tables: `paper_positions`, `paper_bankroll_history`, `paper_daily_stats`, `go_live_readiness` + 16 new helper functions
+- `utils/monitoring.py` — added `DISCORD_COLOR_YELLOW`, `send_discord_update()` (sends to `DISCORD_UPDATES_WEBHOOK` separately from bets webhook)
+- `intelligence/market_scorer.py` — extended `_call_llm()` to extract `primary_signal`, `conflicting_signals`, `bias_check` from LLM JSON; `analyze_market_with_llm()` now returns `composite_signal` and `prompt_version_id` so paper engine can store them
+- `config.py` — added `DISCORD_UPDATES_WEBHOOK`, `PAPER_TRADING`, `LIVE_TRADING`, `PAPER_STARTING_BANKROLL`, `PAPER_MAX_DAILY_TRADES`, `PAPER_MAX_OPEN_POSITIONS`, `PAPER_MAX_CORRELATION_EXPOSURE`
+- `main.py` — Phase 2.6 block: resolution scan → simulate paper bets for every PLACE BET verdict → portfolio state summary; daily report and weekly summary scheduled
+
+**Go-live criteria (all three must be met simultaneously):**
+1. 50+ completed paper trades (entered AND resolved)
+2. Positive total PnL after all fees and slippage
+3. Win rate ≥ 52%
+When met: bot sends READINESS REPORT to Discord updates channel and sets `go_live_flag=READY_AWAITING_APPROVAL` in strategy_state. Cameron must manually set `LIVE_TRADING=true` in `.env`.
 
 ### Phase 3 — Decision Engine
 - `decision/bet_engine.py` — `evaluate_bet(market, llm_result)`:
@@ -224,14 +243,14 @@ Before running git commit, the AI must:
 
 | Task | Assigned To | Status | Blockers |
 |------|-------------|--------|----------|
+| Monitor paper trading — accumulate 50 resolved trades | Cameron | In Progress | Markets need to close (days/weeks) |
 | Phase 4 — execution/wallet.py | Coos | Pending | Coos environment setup |
 | Phase 4 — execution/clob_client.py | Coos | Pending | Coos environment setup |
 | Phase 4 — wire into main.py | Coos | Pending | wallet.py and clob_client.py complete |
-| Phase 4 — live test | Cameron | Pending | Polymarket credentials + USDC |
+| Phase 4 — live test | Cameron | Pending | Phase 2.6 go-live criteria met + Polymarket credentials + USDC |
 | Phase 5 — Flask dashboard | Cameron + Coos | Pending | Phase 4 complete |
 | Get CryptoPanic API token (free registration) | Cameron | Optional | Token needed for CryptoPanic news source |
 | Configure REDDIT_CLIENT_ID/SECRET for PRAW | Cameron | Optional | Enables Reddit sentiment scoring |
-| Phase 2.5 self-learning: accumulate 10+ predictions then resolve them | Cameron | In Progress | Markets need to close |
 | Switch to Ollama from LM Studio | Cameron | Pending | When ready for 24/7 headless |
 
 ---
@@ -239,7 +258,7 @@ Before running git commit, the AI must:
 ## Last Confirmed Working Commit
 
 ```
-Phase 2.5 complete — Deep Intelligence Layer
+Phase 2.6 complete — Paper Trading Engine
 ```
 
 Pipeline confirmed working output (2026-06-02):
@@ -258,6 +277,15 @@ Pipeline confirmed working output (2026-06-02):
 - Weekly evolution scheduled (Sunday 03:00)
 - 17 PLACE BET recommendations
 - Clean exit confirmed
+
+Phase 2.6 additions:
+- Phase 2.6 block fires after Phase 3: resolution scan → simulate_bet for each PLACE BET verdict
+- Daily limit (5 paper trades/day) correctly enforces position limits
+- Discord updates channel receives trade open/close notifications immediately
+- Paper bankroll tracking: WIN pays shares×$1×0.99 (1% resolution fee); LOSS deducted at entry
+- Test confirmed: WIN bankroll math correct ($9.235 → $10.88 on 0.75 bet at 0.45 price)
+- Resolution monitor correctly skips open markets; will auto-close when Polymarket resolves them
+- Portfolio state printed at end of every run
 
 Notes:
 - Binance funding rate API: 451 geo-blocked (graceful degradation — NEUTRAL returned)

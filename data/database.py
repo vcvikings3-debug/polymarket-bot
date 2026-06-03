@@ -143,6 +143,89 @@ def initialize_db():
         )
     """)
 
+    # ── Phase 2.6: Paper Trading tables ───────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS paper_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            market_id TEXT,
+            market_question TEXT,
+            signal TEXT,
+            intended_size REAL,
+            actual_size REAL,
+            slippage_applied REAL,
+            fee_applied REAL,
+            actual_position_cost REAL,
+            entry_price REAL,
+            actual_entry_price REAL,
+            confidence REAL,
+            edge REAL,
+            reasoning TEXT,
+            primary_signal TEXT,
+            conflicting_signals TEXT,
+            intelligence_signals_snapshot TEXT,
+            composite_signal_score REAL,
+            prompt_version_id INTEGER,
+            opened_at TEXT,
+            expected_resolution_date TEXT,
+            resolved_at TEXT,
+            actual_outcome TEXT,
+            was_correct INTEGER,
+            gross_pnl REAL,
+            net_pnl REAL,
+            resolution_fee_applied REAL,
+            hold_time_hours REAL,
+            status TEXT DEFAULT 'OPEN'
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS paper_bankroll_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            bankroll_amount REAL,
+            event_type TEXT,
+            event_id INTEGER,
+            note TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS paper_daily_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT UNIQUE,
+            trades_opened INTEGER DEFAULT 0,
+            trades_closed INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0,
+            gross_pnl REAL DEFAULT 0,
+            net_pnl REAL DEFAULT 0,
+            ending_bankroll REAL,
+            win_rate REAL,
+            avg_confidence REAL,
+            avg_edge REAL,
+            sharpe_ratio REAL,
+            max_drawdown REAL,
+            notes TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS go_live_readiness (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            evaluated_at TEXT,
+            trades_completed INTEGER,
+            total_pnl REAL,
+            win_rate REAL,
+            criterion_1_met INTEGER DEFAULT 0,
+            criterion_2_met INTEGER DEFAULT 0,
+            criterion_3_met INTEGER DEFAULT 0,
+            all_criteria_met INTEGER DEFAULT 0,
+            readiness_report_json TEXT,
+            notification_sent INTEGER DEFAULT 0,
+            cameron_approved INTEGER DEFAULT 0
+        )
+    """)
+
     conn.commit()
     _ensure_columns(conn)
     _ensure_bets_columns(conn)
@@ -574,4 +657,257 @@ def set_strategy_state(key: str, value: str) -> bool:
         return True
     except Exception as e:
         logger.error("Failed to set strategy state {}: {}", key, e)
+        return False
+
+
+# ── Phase 2.6: Paper Trading helpers ──────────────────────────────────────
+
+def save_paper_position(market_id: str, market_question: str, signal: str,
+                        intended_size: float, actual_size: float, slippage_applied: float,
+                        fee_applied: float, actual_position_cost: float,
+                        entry_price: float, actual_entry_price: float,
+                        confidence: float, edge: float, reasoning: str,
+                        primary_signal: str, conflicting_signals: str,
+                        intelligence_signals_snapshot: str, composite_signal_score: float,
+                        prompt_version_id: int, expected_resolution_date: str) -> int:
+    """Insert a new paper position. Returns row id, 0 on failure."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = conn.execute("""
+            INSERT INTO paper_positions (
+                market_id, market_question, signal,
+                intended_size, actual_size, slippage_applied, fee_applied, actual_position_cost,
+                entry_price, actual_entry_price,
+                confidence, edge, reasoning, primary_signal, conflicting_signals,
+                intelligence_signals_snapshot, composite_signal_score, prompt_version_id,
+                opened_at, expected_resolution_date, status
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN')
+        """, (
+            market_id, market_question, signal,
+            intended_size, actual_size, slippage_applied, fee_applied, actual_position_cost,
+            entry_price, actual_entry_price,
+            confidence, edge, reasoning, primary_signal, conflicting_signals,
+            intelligence_signals_snapshot, composite_signal_score, prompt_version_id,
+            now, expected_resolution_date,
+        ))
+        conn.commit()
+        row_id = cursor.lastrowid
+        conn.close()
+        return row_id
+    except Exception as e:
+        logger.error("Failed to save paper position for {}: {}", market_id, e)
+        return 0
+
+
+def update_paper_position_resolution(position_id: int, actual_outcome: str, was_correct: bool,
+                                      gross_pnl: float, net_pnl: float, resolution_fee: float,
+                                      status: str) -> bool:
+    """Close a paper position with its resolution outcome. Returns True on success."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        # Calculate hold time
+        row = conn.execute(
+            "SELECT opened_at FROM paper_positions WHERE id = ?", (position_id,)
+        ).fetchone()
+        hold_hours = 0.0
+        if row and row["opened_at"]:
+            try:
+                opened = datetime.fromisoformat(row["opened_at"])
+                hold_hours = (datetime.now(timezone.utc) - opened.replace(tzinfo=timezone.utc)
+                              if opened.tzinfo is None else
+                              datetime.now(timezone.utc) - opened).total_seconds() / 3600
+            except Exception:
+                pass
+        conn.execute("""
+            UPDATE paper_positions SET
+                resolved_at = ?, actual_outcome = ?, was_correct = ?,
+                gross_pnl = ?, net_pnl = ?, resolution_fee_applied = ?,
+                hold_time_hours = ?, status = ?
+            WHERE id = ?
+        """, (now, actual_outcome, 1 if was_correct else 0,
+              gross_pnl, net_pnl, resolution_fee, round(hold_hours, 2), status, position_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to update paper position {}: {}", position_id, e)
+        return False
+
+
+def get_open_paper_positions() -> list:
+    """Return all OPEN paper positions."""
+    try:
+        conn = _get_connection()
+        rows = conn.execute(
+            "SELECT * FROM paper_positions WHERE status = 'OPEN' ORDER BY opened_at ASC"
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("Failed to get open paper positions: {}", e)
+        return []
+
+
+def get_all_paper_positions(status: str = None) -> list:
+    """Return paper positions filtered by status (or all if status=None)."""
+    try:
+        conn = _get_connection()
+        if status:
+            rows = conn.execute(
+                "SELECT * FROM paper_positions WHERE status = ? ORDER BY opened_at DESC",
+                (status,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM paper_positions ORDER BY opened_at DESC"
+            ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("Failed to get paper positions: {}", e)
+        return []
+
+
+def get_paper_position_by_market(market_id: str) -> dict | None:
+    """Return the most recent OPEN paper position for a given market_id, or None."""
+    try:
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT * FROM paper_positions WHERE market_id = ? AND status = 'OPEN' "
+            "ORDER BY opened_at DESC LIMIT 1",
+            (market_id,)
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get paper position for market {}: {}", market_id, e)
+        return None
+
+
+def get_today_paper_trade_count() -> int:
+    """Return number of paper positions opened today (UTC)."""
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date().isoformat()
+    try:
+        conn = _get_connection()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM paper_positions WHERE date(opened_at) = ?", (today,)
+        ).fetchone()[0]
+        conn.close()
+        return count
+    except Exception as e:
+        logger.error("Failed to get today's paper trade count: {}", e)
+        return 0
+
+
+def record_bankroll_event(timestamp: str, bankroll_amount: float, event_type: str,
+                           event_id: int = None, note: str = None) -> bool:
+    """Record a bankroll history event. Returns True on success."""
+    try:
+        conn = _get_connection()
+        conn.execute("""
+            INSERT INTO paper_bankroll_history (timestamp, bankroll_amount, event_type, event_id, note)
+            VALUES (?, ?, ?, ?, ?)
+        """, (timestamp, bankroll_amount, event_type, event_id, note))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to record bankroll event: {}", e)
+        return False
+
+
+def get_bankroll_history() -> list:
+    """Return all bankroll history events ordered by time."""
+    try:
+        conn = _get_connection()
+        rows = conn.execute(
+            "SELECT * FROM paper_bankroll_history ORDER BY timestamp ASC"
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("Failed to get bankroll history: {}", e)
+        return []
+
+
+def upsert_paper_daily_stats(date: str, **kwargs) -> bool:
+    """Insert or update paper trading stats for a given date."""
+    try:
+        conn = _get_connection()
+        # Build dynamic upsert
+        fields = list(kwargs.keys())
+        vals = list(kwargs.values())
+        set_clause = ", ".join(f"{f} = excluded.{f}" for f in fields)
+        placeholders = ", ".join("?" for _ in fields)
+        conn.execute(f"""
+            INSERT INTO paper_daily_stats (date, {', '.join(fields)})
+            VALUES (?, {placeholders})
+            ON CONFLICT(date) DO UPDATE SET {set_clause}
+        """, [date] + vals)
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to upsert paper daily stats for {}: {}", date, e)
+        return False
+
+
+def save_go_live_readiness(trades_completed: int, total_pnl: float, win_rate: float,
+                            c1: bool, c2: bool, c3: bool, all_met: bool,
+                            report_json: str) -> int:
+    """Record a go-live readiness evaluation. Returns row id."""
+    from datetime import datetime, timezone
+    try:
+        conn = _get_connection()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = conn.execute("""
+            INSERT INTO go_live_readiness (
+                evaluated_at, trades_completed, total_pnl, win_rate,
+                criterion_1_met, criterion_2_met, criterion_3_met, all_criteria_met,
+                readiness_report_json, notification_sent
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        """, (now, trades_completed, total_pnl, win_rate,
+              1 if c1 else 0, 1 if c2 else 0, 1 if c3 else 0, 1 if all_met else 0,
+              report_json))
+        conn.commit()
+        row_id = cursor.lastrowid
+        conn.close()
+        return row_id
+    except Exception as e:
+        logger.error("Failed to save go-live readiness: {}", e)
+        return 0
+
+
+def get_last_readiness_notification_time() -> str | None:
+    """Return the evaluated_at timestamp of the last notification that was sent, or None."""
+    try:
+        conn = _get_connection()
+        row = conn.execute(
+            "SELECT evaluated_at FROM go_live_readiness WHERE notification_sent = 1 "
+            "ORDER BY evaluated_at DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        return row["evaluated_at"] if row else None
+    except Exception as e:
+        logger.error("Failed to get last readiness notification time: {}", e)
+        return None
+
+
+def mark_readiness_notification_sent(row_id: int) -> bool:
+    """Mark a readiness record as having sent the notification."""
+    try:
+        conn = _get_connection()
+        conn.execute(
+            "UPDATE go_live_readiness SET notification_sent = 1 WHERE id = ?", (row_id,)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error("Failed to mark readiness notification sent: {}", e)
         return False

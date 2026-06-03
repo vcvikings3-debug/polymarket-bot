@@ -17,7 +17,7 @@ from execution.polymarket_client import _matches_crypto, parse_market, fetch_all
 from intelligence.market_scorer import analyze_market_with_llm
 from decision.bet_engine import evaluate_bet
 from decision.risk_manager import get_daily_stats, is_safe_to_bet
-from config import MAX_BET_SIZE
+from config import MAX_BET_SIZE, PAPER_TRADING, LIVE_TRADING, PAPER_STARTING_BANKROLL, DRY_RUN
 from utils.monitoring import (
     init_sentry, capture_error, send_discord_alert,
     DISCORD_COLOR_GREEN, DISCORD_COLOR_RED, DISCORD_COLOR_PURPLE,
@@ -27,6 +27,17 @@ import schedule
 
 # Max crypto markets to send to LLM per run (keeps run time reasonable)
 LLM_ANALYSIS_CAP = 20
+
+# Paper trading engine — initialized once, persists state in DB across runs
+_paper_engine = None
+
+
+def _get_paper_engine():
+    global _paper_engine
+    if _paper_engine is None and PAPER_TRADING:
+        from paper_trading.paper_engine import PaperTradingEngine
+        _paper_engine = PaperTradingEngine(PAPER_STARTING_BANKROLL)
+    return _paper_engine
 
 
 def _setup_weekly_evolution():
@@ -39,13 +50,56 @@ def _setup_weekly_evolution():
         logger.warning("Could not schedule weekly evolution: {}", e)
 
 
+def _setup_paper_trading_schedules():
+    """Wire daily paper trading report and weekly summary."""
+    if not PAPER_TRADING:
+        return
+    try:
+        def _daily_report():
+            engine = _get_paper_engine()
+            if engine is None:
+                return
+            from paper_trading.performance_analyzer import generate_full_performance_report
+            from paper_trading.report_generator import generate_daily_report
+            all_pos = get_all_paper_positions_for_report()
+            history = engine.get_portfolio_state()
+            from data.database import get_bankroll_history, get_all_paper_positions
+            perf = generate_full_performance_report(get_all_paper_positions(), get_bankroll_history())
+            generate_daily_report(perf, engine)
+
+        def _weekly_summary():
+            engine = _get_paper_engine()
+            if engine is None:
+                return
+            from paper_trading.report_generator import generate_weekly_summary
+            from paper_trading.performance_analyzer import generate_full_performance_report
+            from data.database import get_bankroll_history, get_all_paper_positions
+            from datetime import datetime, timezone, timedelta
+            all_pos = get_all_paper_positions()
+            week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+            week_trades = [
+                p for p in all_pos
+                if p.get("resolved_at") and p.get("resolved_at", "") >= week_ago
+                and p.get("status") in ("CLOSED_WIN", "CLOSED_LOSS")
+            ]
+            perf = generate_full_performance_report(all_pos, get_bankroll_history())
+            generate_weekly_summary(perf, week_trades)
+
+        schedule.every().day.at("20:00").do(_daily_report)
+        schedule.every().sunday.at("03:30").do(_weekly_summary)
+        logger.info("Paper trading reports scheduled: daily at 20:00, weekly summary at Sunday 03:30")
+    except Exception as e:
+        logger.warning("Could not schedule paper trading reports: {}", e)
+
+
 def main():
     init_sentry()
     _setup_weekly_evolution()
+    _setup_paper_trading_schedules()
 
     print("=" * 70)
-    print("  POLYMARKET BOT -- Phase 1 + 2 + 3 Pipeline")
-    print("  Fetch -> Filter -> Save -> LLM Analyze -> Decision Engine -> Results")
+    print("  POLYMARKET BOT -- Phase 1 + 2 + 2.5 + 2.6 + 3 Pipeline")
+    print("  Fetch -> Filter -> Save -> LLM Analyze -> Decision Engine -> Paper Trade")
     print("=" * 70)
 
     try:
@@ -176,6 +230,50 @@ def main():
                     ),
                     color=color,
                 )
+
+        # ── Phase 2.6: Paper Trading ───────────────────────────────────────
+        paper_engine = _get_paper_engine()
+        if paper_engine is not None:
+            print(f"\n  [Phase 2.6] Paper Trading (PAPER_TRADING={PAPER_TRADING})")
+
+            # Scan for resolved markets first — closes any winning/losing positions
+            try:
+                from paper_trading.resolution_monitor import scan_all_open_positions
+                resolved_count = scan_all_open_positions(paper_engine)
+                if resolved_count > 0:
+                    print(f"  [PAPER] Resolved {resolved_count} open position(s)")
+            except Exception as e:
+                logger.warning("Paper trading resolution scan failed: {}", e)
+
+            # Simulate paper bets for every PLACE BET verdict
+            # (only when not in live trading mode — paper runs parallel with live once live is on)
+            paper_simulated = 0
+            paper_skipped = 0
+            for market, analysis, bet, safe, verdict in recommendations:
+                if verdict != "PLACE BET":
+                    continue
+                if not bet.get("should_bet"):
+                    continue
+                try:
+                    position = paper_engine.simulate_bet(market, analysis, bet)
+                    if position:
+                        paper_simulated += 1
+                        print(f"  [PAPER] Simulated: {analysis['signal']} "
+                              f"${bet['recommended_size']:.4f} on {market.get('question','')[:40]}...")
+                    else:
+                        paper_skipped += 1
+                except Exception as e:
+                    logger.warning("Paper trade simulation failed for {}: {}", market.get("id"), e)
+
+            # Portfolio state summary
+            portfolio = paper_engine.get_portfolio_state()
+            print(f"  [PAPER] Simulated: {paper_simulated} | Skipped: {paper_skipped}")
+            print(f"  [PAPER] Bankroll: ${portfolio['current_bankroll']:.4f} | "
+                  f"Open: {portfolio['open_positions']} | "
+                  f"Closed: {portfolio['closed_positions']} | "
+                  f"Win rate: {portfolio['win_rate']:.1%}")
+            print(f"  [PAPER] Total PnL: ${portfolio['total_pnl']:.4f} | "
+                  f"Max drawdown: {portfolio['max_drawdown_pct']:.1f}%")
 
         # ── Daily Stats Summary ────────────────────────────────────────────────
         stats = get_daily_stats(DB_PATH)
